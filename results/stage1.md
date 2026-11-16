@@ -1,5 +1,9 @@
 # Stage 1 results: grid search against the three everyday filters
 
+> Added later: pFDR next to FDR for every filter, in
+> [exp1_grid_tables.md](exp1_grid_tables.md) and explained in the
+> [Stage 3 note](stage3.md).
+
 Reproduce with `uv run python -m overfitlab all` (about 5 minutes on 8 cores).
 Master seed `20261116`; every world and every truth path has its own stream
 derived from it (`config.seed`).

@@ -144,11 +144,16 @@ def summarise(
     sweep: bool,
     filters: list[Filter] = FILTERS,
 ) -> pd.DataFrame:
-    """FDR and power per group of worlds, filter and cut, with 95% intervals.
+    """FDR, pFDR and power per group of worlds, filter and cut, with 95% intervals.
 
     A strategy is "true" in a world type when its long-run net Sharpe is at
     least `threshold`. With `sweep=False` only each filter's conventional cut
     is reported.
+
+    pFDR (positive FDR, Storey 2003) is the mean false discovery proportion
+    over the worlds where the filter accepted something. FDR counts the other
+    worlds as zero, so FDR = pFDR x share of worlds with an acceptance. The
+    pFDR interval resamples only those worlds; it is NaN when there are none.
     """
     names = [s.name for s in GRID]
     wide = truth.pivot(index="world", columns="strategy", values="true_sharpe")
@@ -167,6 +172,7 @@ def summarise(
                 fdp, power = np.concatenate(fdp), np.concatenate(power)
                 n_accepted = np.concatenate(n_accepted)
                 fdr, fdr_low, fdr_high = mean_ci(fdp)
+                pfdr, pfdr_low, pfdr_high = mean_ci(fdp[n_accepted > 0])
                 pw, pw_low, pw_high = mean_ci(power)
                 rows.append(
                     {
@@ -178,6 +184,10 @@ def summarise(
                         "fdr": fdr,
                         "fdr_low": fdr_low,
                         "fdr_high": fdr_high,
+                        "pfdr": pfdr,
+                        "pfdr_low": pfdr_low,
+                        "pfdr_high": pfdr_high,
+                        "worlds_accepting": (n_accepted > 0).mean(),
                         "power": pw,
                         "power_low": pw_low,
                         "power_high": pw_high,

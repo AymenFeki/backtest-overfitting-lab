@@ -24,7 +24,7 @@ def test_world_is_reproducible_and_seeds_differ():
 
 def test_spec_names_are_unique():
     names = [s.name for s in cfg.SPECS]
-    assert len(names) == len(set(names)) == 20
+    assert len(names) == len(set(names)) == 23
 
 
 def test_null_world_has_no_drift_but_fat_tails_and_vol_clustering():

@@ -123,23 +123,28 @@ def variant_figure(points: pd.DataFrame, path: Path) -> None:
 
     Columns: no signal and medium signal with regime switching, obvious signal
     with alpha decay. Top row FDR, bottom row power, bars are 95% intervals.
+    The medium panel has a third series: regime switching with the signal
+    rescaled so the planted rule earns the same Sharpe as in the plain world.
     """
+    regimes, matched = "all_medium_regimes", "all_medium_regimes_matched"
     panels = [
-        ("No signal", "no_signal", "no_signal_regimes", "Regime switching"),
-        ("Medium signal", "all_medium", "all_medium_regimes", "Regime switching"),
-        ("Obvious signal", "all_obvious", "all_obvious_decay", "Alpha decay"),
+        ("No signal", "no_signal", "no_signal_regimes", "Regime switching", None),
+        ("Medium signal", "all_medium", regimes, "Regime switching", matched),
+        ("Obvious signal", "all_obvious", "all_obvious_decay", "Alpha decay", None),
     ]
     names = list(STYLE)
     height = np.arange(len(names))[::-1]
     fig, axes = plt.subplots(2, 3, figsize=(13, 7.6), sharey=True)
     fig.set_facecolor(SURFACE)
-    for column, (title, plain, harder, label) in enumerate(panels):
+    for column, (title, plain, harder, label, matched) in enumerate(panels):
         for row, measure in enumerate(("fdr", "power")):
             ax = axes[row, column]
-            series = (
-                (plain, "Plain world", "#2a78d6", "o", 0.17),
-                (harder, label, "#eb6834", "s", -0.17),
-            )
+            series = [
+                (plain, "Plain world", "#2a78d6", "o", 0.2),
+                (harder, label, "#eb6834", "s", 0.0 if matched else -0.2),
+            ]
+            if matched:
+                series.append((matched, "Same, signal rescaled", "#1baf7a", "D", -0.2))
             for group, tag, colour, marker, shift in series:
                 rows = points[points.worlds == group].set_index("filter").loc[names]
                 low = rows[measure] - rows[f"{measure}_low"]
@@ -161,7 +166,7 @@ def variant_figure(points: pd.DataFrame, path: Path) -> None:
                 ax.legend(
                     frameon=False,
                     fontsize=9,
-                    ncol=2,
+                    ncol=3,
                     loc="lower center",
                     bbox_to_anchor=(0.5, 0.99),
                 )

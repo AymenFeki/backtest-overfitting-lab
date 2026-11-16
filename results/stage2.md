@@ -1,5 +1,9 @@
 # Stage 2 results: deflated Sharpe, CPCV, Benjamini-Hochberg, Romano-Wolf
 
+> Added later: pFDR next to FDR for every filter, in
+> [exp1_grid_tables.md](exp1_grid_tables.md) and explained in the
+> [Stage 3 note](stage3.md).
+
 Reproduce with `uv run python -m overfitlab all` (about 7 minutes on 8 cores).
 Same worlds, seeds and truth as Stage 1; the Stage 1 numbers are unchanged to
 the last digit. The new filters see only the research sample (first 70%).

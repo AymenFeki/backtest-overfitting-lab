@@ -54,7 +54,7 @@ class WorldSpec:
     kappa: float = 0.0
     regimes: bool = False  # calm/crisis switching
     half_life_years: float = 0.0  # alpha decay; 0 = the signal never fades
-    variant: str = "base"  # base | regimes | decay
+    variant: str = "base"  # base | regimes | regimes_matched | decay
 
 
 # The null world is labelled "no_signal": pandas reads the text "null" in a
@@ -102,6 +102,24 @@ SPECS += [
     ),
 ]
 
+# Regime switching makes returns noisier, so the same kappa gives a weaker
+# signal (oracle Sharpe 0.64 to 0.92 instead of 1.0). These kappas are
+# recalibrated with regimes on, so the oracle earns Sharpe 1.0 again: the
+# "medium" column of the second table printed by `python -m overfitlab calibrate`.
+KAPPA_REGIMES_MATCHED = {"tsmom": 0.0432, "xsmom": 0.0287, "meanrev": 0.0751}
+# Appended last: a world's seed depends on its position in SPECS.
+SPECS += [
+    WorldSpec(
+        f"{signal}_medium_regimes_matched",
+        signal,
+        "medium",
+        kappa,
+        regimes=True,
+        variant="regimes_matched",
+    )
+    for signal, kappa in KAPPA_REGIMES_MATCHED.items()
+]
+
 # --- backtests and experiments ---------------------------------------------
 COST_BPS = 5.0  # per unit of one-way turnover
 RESEARCH_FRAC = 0.7  # the last 30% is the lockbox
@@ -114,3 +132,17 @@ N_WORLDS = 200
 N_BOOTSTRAP = 2000
 RW_RESAMPLES = 1000  # Romano-Wolf bootstrap resamples
 RW_BLOCK = 20  # block length in days, about one half-life of a volatility shock
+
+# --- language-model agent (Stage 4) ----------------------------------------
+AGENT_ROUNDS = 20  # strategies one agent may try in one world
+LOCAL_MODEL = "qwen2.5-coder:7b"
+OLLAMA_URL = "http://localhost:11434"
+# First characters of each model's digest (`ollama list` shows them). A live
+# call stops if the installed weights are a different version.
+OLLAMA_DIGESTS = {"qwen2.5-coder:7b": "dae161e27b0e"}
+OLLAMA_CONTEXT = 16384  # tokens the model can see; Ollama's default cuts silently
+LLM_TEMPERATURE = 0.7  # some randomness, so 20 rounds give 20 different ideas
+LLM_MAX_TOKENS = 600  # per reply
+API_MODEL = "claude-haiku-5-5"
+API_PRICE_PER_MTOK = {"claude-haiku-5-5": (0.10, 0.50)}  # dollars: input, output
+API_BUDGET_USD = 2.00  # hard cap on all API calls together

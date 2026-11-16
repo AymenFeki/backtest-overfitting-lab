@@ -11,8 +11,9 @@ def fdp_and_power(
     """Per-world false discovery proportion and power.
 
     accepted: (worlds, strategies) booleans, is_true: (strategies,) booleans.
-    FDP = false accepted / accepted, taken as 0 when nothing is accepted
-    (the Benjamini-Hochberg convention). Its average over worlds is the FDR.
+    FDP = V / max(R, 1) with V false accepted and R accepted, so it is 0 when
+    nothing is accepted (the Benjamini-Hochberg convention). Its average over
+    worlds is the FDR; its average over the worlds with R > 0 is the pFDR.
     Power = share of the truly profitable strategies that were accepted; it is
     NaN when the world has none.
     """

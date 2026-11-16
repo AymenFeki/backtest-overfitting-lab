@@ -9,12 +9,56 @@ import numpy as np
 import pandas as pd
 
 from . import config as cfg
+from .agent import run_agent
 from .backtest import net_returns, sharpe
 from .experiments import grid_scores, summarise, true_sharpes
-from .plots import fdr_power_figure, variant_figure
+from .llm import Model
+from .plots import LABEL, fdr_power_figure, variant_figure
 from .registry import GAP_FILTERS
 from .strategies import oracle
-from .worlds import draw_shocks, simulate, to_prices
+from .worlds import draw_shocks, simulate, to_prices, world
+
+# Tables written to results/exp1_grid_tables.md: title -> {column: group of worlds}
+TABLES = {
+    "Plain worlds": {
+        "No signal": "no_signal",
+        "Barely": "all_barely",
+        "Weak": "all_weak",
+        "Medium": "all_medium",
+        "Obvious": "all_obvious",
+    },
+    "Regime switching": {
+        "No signal, plain": "no_signal",
+        "No signal, regimes": "no_signal_regimes",
+        "Medium, plain": "all_medium",
+        "Medium, regimes": "all_medium_regimes",
+        "Medium, regimes, signal rescaled": "all_medium_regimes_matched",
+    },
+    "Alpha decay": {
+        "Obvious, plain": "all_obvious",
+        "Obvious, decay": "all_obvious_decay",
+    },
+}
+
+
+def markdown_tables(points: pd.DataFrame) -> str:
+    """Each filter at its conventional cut: FDR / pFDR / power in percent."""
+    points = points.set_index(["worlds", "filter"])
+    lines = ["Cells are FDR / pFDR / power in percent; `-` means undefined.", ""]
+    for title, columns in TABLES.items():
+        lines += [f"## {title}", "", "| Filter | " + " | ".join(columns) + " |"]
+        lines.append("|---" * (len(columns) + 1) + "|")
+        for name, label in LABEL.items():
+            cells = []
+            for group in columns.values():
+                row = points.loc[(group, name)]
+                values = (row.fdr, row.pfdr, row.power)
+                cells.append(
+                    " / ".join("-" if np.isnan(v) else f"{100 * v:.1f}" for v in values)
+                )
+            lines.append(f"| {label} | " + " | ".join(cells) + " |")
+        lines.append("")
+    return "\n".join(lines)
 
 
 def run_all(quick: bool, jobs: int) -> None:
@@ -43,6 +87,7 @@ def run_all(quick: bool, jobs: int) -> None:
     main_points = points[points.true_threshold == cfg.TRUE_SHARPE_MIN]
     fdr_power_figure(curves, main_points, out / "figures" / "exp1_grid_fdr_power.png")
     variant_figure(main_points, out / "figures" / "exp1_grid_regimes_decay.png")
+    (out / "exp1_grid_tables.md").write_text(markdown_tables(main_points))
 
     # CPCV with wider gaps around the test groups, on the first 50 worlds.
     gap_scores = grid_scores(5 if quick else 50, jobs, GAP_FILTERS)
@@ -54,36 +99,99 @@ def run_all(quick: bool, jobs: int) -> None:
 def calibrate(n_paths: int = 50) -> None:
     """Find the kappa that gives each target oracle Sharpe, by interpolation.
 
-    Prints the table to paste into config.KAPPA. Uses its own random stream.
+    Prints one table for the plain worlds (config.KAPPA) and one for worlds
+    with regime switching (its "medium" column is config.KAPPA_REGIMES_MATCHED).
+    Uses its own random stream.
     """
     kappas = np.array([0.005, 0.01, 0.015, 0.02, 0.03, 0.04, 0.05, 0.06, 0.08, 0.1])
     seeds = [cfg.seed("calibrate", p) for p in range(n_paths)]
     shocks = draw_shocks(seeds, cfg.TRUTH_YEARS * cfg.PERIODS_PER_YEAR)
-    for signal in cfg.KAPPA:
-        measured = []
-        for kappa in kappas:
-            spec = cfg.WorldSpec("calibration", signal, "calibration", float(kappa))
-            trader = oracle(spec)
-            per_path = [
-                sharpe(net_returns(prices, trader.positions(prices)))
-                for prices in map(to_prices, simulate(spec, shocks))
-            ]
-            measured.append(np.mean(per_path))
-        chosen = np.interp(list(cfg.STRENGTH_TARGETS.values()), measured, kappas)
-        table = dict(zip(cfg.STRENGTH_TARGETS, chosen.round(4).tolist(), strict=True))
-        print(f'"{signal}": {table},')
+    for regimes in (False, True):
+        print("with regime switching:" if regimes else "plain worlds:")
+        for signal in cfg.KAPPA:
+            measured = []
+            for kappa in kappas:
+                spec = cfg.WorldSpec(
+                    "calibration", signal, "calibration", float(kappa), regimes
+                )
+                trader = oracle(spec)
+                per_path = [
+                    sharpe(net_returns(prices, trader.positions(prices)))
+                    for prices in map(to_prices, simulate(spec, shocks))
+                ]
+                measured.append(np.mean(per_path))
+            chosen = np.interp(list(cfg.STRENGTH_TARGETS.values()), measured, kappas)
+            table = dict(
+                zip(cfg.STRENGTH_TARGETS, chosen.round(4).tolist(), strict=True)
+            )
+            print(f'"{signal}": {table},')
+
+
+PILOT_WORLDS = ["no_signal", "tsmom_medium", "meanrev_medium"]
+
+
+def pilot(model: Model, live: bool) -> None:
+    """A small agent run to choose a model: one world of three types, 20 rounds.
+
+    Writes one row per round to results/pilot/ and prints the share of usable
+    proposals and the speed. Replies are stored, so a second run is instant.
+    """
+    rows = []
+    for name in PILOT_WORLDS:
+        spec_index = [s.name for s in cfg.SPECS].index(name)
+        prices = world(cfg.SPECS[spec_index], 0)
+        for trial in run_agent(prices, model, seed=spec_index * 1000, live=live):
+            research = None
+            if trial.returns is not None:
+                research = float(sharpe(trial.returns.iloc[: cfg.N_RESEARCH]))
+            rows.append(
+                {
+                    "world": name,
+                    "round": trial.round,
+                    "status": trial.status.split(":")[0],
+                    "research_sharpe": research,
+                    "input_tokens": trial.reply.input_tokens,
+                    "output_tokens": trial.reply.output_tokens,
+                    "seconds": trial.reply.seconds,
+                    "cost_usd": trial.reply.cost_usd,
+                    "stop": trial.reply.stop,
+                }
+            )
+            print(rows[-1], flush=True)
+    table = pd.DataFrame(rows)
+    out = Path("results/pilot")
+    out.mkdir(parents=True, exist_ok=True)
+    table.to_csv(out / f"{model.name.replace(':', '_')}.csv", index=False)
+    usable = table.status == "ok"
+    print(f"\n{model.name}: {usable.mean():.0%} of {len(table)} proposals usable")
+    print(table.status.value_counts().to_string())
+    third = len(table) // 3
+    for label, part in (("first", table[:third]), ("last", table[-third:])):
+        speed = part.output_tokens.sum() / part.seconds.sum()
+        print(
+            f"{label} third: {part.seconds.mean():.1f} s per round, "
+            f"{speed:.1f} tokens per second"
+        )
+    print(f"largest prompt: {table.input_tokens.max()} tokens")
+    print(f"cost: ${table.cost_usd.sum():.4f}")
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(prog="overfitlab")
-    parser.add_argument("command", choices=["all", "calibrate"])
+    parser.add_argument("command", choices=["all", "calibrate", "pilot"])
     parser.add_argument("--quick", action="store_true", help="small run for a check")
     parser.add_argument("--jobs", type=int, default=max(1, (os.cpu_count() or 2) - 2))
+    parser.add_argument("--provider", default="ollama", help="ollama or anthropic")
+    parser.add_argument("--model", help="model name; default from the config")
+    parser.add_argument("--live", action="store_true", help="allow new model calls")
     args = parser.parse_args()
     if args.command == "all":
         run_all(args.quick, args.jobs)
-    else:
+    elif args.command == "calibrate":
         calibrate()
+    else:
+        default = cfg.LOCAL_MODEL if args.provider == "ollama" else cfg.API_MODEL
+        pilot(Model(args.provider, args.model or default), args.live)
 
 
 if __name__ == "__main__":

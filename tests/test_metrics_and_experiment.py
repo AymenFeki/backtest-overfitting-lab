@@ -46,6 +46,11 @@ def test_experiment_runs_end_to_end_on_a_tiny_setup(monkeypatch):
     table = experiments.summarise(scores, truth, threshold=0.2, sweep=False)
     assert set(table.worlds) == {"no_signal", "tsmom_obvious", "all_obvious"}
     assert table.fdr.between(0, 1).all()
+    # FDR = pFDR x share of worlds with an acceptance; pFDR is undefined
+    # (NaN) when no world has one.
+    some = table[table.worlds_accepting > 0]
+    assert np.allclose(some.fdr, some.pfdr * some.worlds_accepting)
+    assert table[table.worlds_accepting == 0].pfdr.isna().all()
 
     # With an unreachable threshold no strategy is true: power is undefined
     # and every accepted strategy is a false discovery.
