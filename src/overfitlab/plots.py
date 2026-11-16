@@ -229,3 +229,121 @@ def comparison_figure(
     path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(path, dpi=160, bbox_inches="tight")
     plt.close(fig)
+
+
+def _clean(ax: plt.Axes, grid_axis: str) -> None:
+    ax.set_facecolor(SURFACE)
+    ax.grid(color=GRID, linewidth=0.8, axis=grid_axis)
+    ax.tick_params(colors=MUTED, length=0)
+    for side in ax.spines.values():
+        side.set_visible(False)
+
+
+REUSE_SERIES = {  # mechanism: legend label
+    "once": "Lockbox opened once, at the end",
+    "reuse": "Lockbox Sharpe after every round",
+    "thresholdout": "Asked through Thresholdout",
+}
+
+
+def reuse_figure(panels: list[tuple[str, pd.DataFrame]], path: Path) -> None:
+    """Experiment 2: share of no-signal worlds with a false claim, by round.
+
+    One panel per analyst, one line per way of answering, bands are 95%
+    intervals over worlds. The dotted line is the 5% level of the test.
+    """
+    fig, axes = plt.subplots(
+        1, len(panels), figsize=(5.4 * len(panels), 4.0), sharey=True, squeeze=False
+    )
+    fig.set_facecolor(SURFACE)
+    for ax, (title, summary) in zip(axes[0], panels, strict=True):
+        for (name, label), (colour, _) in zip(
+            REUSE_SERIES.items(), _SERIES, strict=True
+        ):
+            line = summary[summary.mechanism == name].sort_values("round")
+            if line.empty:
+                continue
+            ax.fill_between(
+                line["round"], line.false_low, line.false_high, color=colour, alpha=0.15
+            )
+            ax.plot(
+                line["round"], line.false_claims, color=colour, linewidth=2, label=label
+            )
+        ax.axhline(0.05, color=MUTED, linewidth=1, linestyle=":")
+        ax.set_title(title, fontsize=10, color=INK)
+        ax.set_xlabel("Rounds of research", color=MUTED)
+        ax.set_ylim(-0.02, 1.0)
+        _clean(ax, "y")
+    axes[0, 0].set_ylabel("Share of worlds with a false claim", color=MUTED)
+    handles, labels = axes[0, 0].get_legend_handles_labels()
+    fig.legend(
+        handles,
+        labels,
+        loc="lower center",
+        ncol=3,
+        frameon=False,
+        bbox_to_anchor=(0.5, 0.93),
+    )
+    fig.suptitle(
+        "No-signal worlds: false discoveries as the lockbox is consulted again "
+        "and again (bands = 95% interval, dotted = 5%)",
+        y=1.1,
+        fontsize=11,
+        color=INK,
+    )
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(path, dpi=160, bbox_inches="tight")
+    plt.close(fig)
+
+
+GOODHART_ARMS = {  # arm: legend label
+    "sharpe_only": "Sees its Sharpe ratio only",
+    "not_told": "Sees which checks pass",
+    "told": "Also told what the checks are",
+}
+
+
+def goodhart_figure(summary: pd.DataFrame, path: Path) -> None:
+    """Experiment 3: false discoveries per no-signal world, by filter and arm."""
+    names = [*STYLE, "all_checks"]
+    labels = [*LABEL.values(), "All six checks shown"]
+    height = np.arange(len(names))[::-1]
+    fig, ax = plt.subplots(figsize=(7.5, 5.2))
+    fig.set_facecolor(SURFACE)
+    shifts = np.linspace(0.22, -0.22, len(GOODHART_ARMS))
+    for (arm, label), (colour, marker), shift in zip(
+        GOODHART_ARMS.items(), _SERIES, shifts, strict=True
+    ):
+        rows = summary[summary.arm == arm].set_index("filter").reindex(names)
+        ax.errorbar(
+            rows.accepted_per_world,
+            height + shift,
+            xerr=[
+                rows.accepted_per_world - rows.accepted_low,
+                rows.accepted_high - rows.accepted_per_world,
+            ],
+            fmt=marker,
+            color=colour,
+            markersize=7,
+            markeredgecolor=SURFACE,
+            elinewidth=1.2,
+            capsize=2,
+            label=label,
+        )
+    ax.set_yticks(height, labels)
+    ax.set_xlim(-0.05, max(1.0, 1.1 * summary.accepted_high.max()))
+    ax.set_xlabel("Accepted strategies per world, all of them false", color=MUTED)
+    ax.legend(
+        frameon=False, fontsize=9, ncol=3, loc="lower center", bbox_to_anchor=(0.4, 1.0)
+    )
+    _clean(ax, "x")
+    fig.suptitle(
+        "No-signal worlds: what the agent gets past each filter "
+        "(20 rounds, bars = 95% interval)",
+        y=1.02,
+        fontsize=11,
+        color=INK,
+    )
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(path, dpi=160, bbox_inches="tight")
+    plt.close(fig)

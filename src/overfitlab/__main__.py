@@ -9,6 +9,7 @@ import numpy as np
 import pandas as pd
 
 from . import config as cfg
+from . import goodhart, holdout_reuse
 from .agent import run_agent
 from .agent_experiment import agent_truth, generate, score_runs, summarise_agent
 from .backtest import net_returns, sharpe
@@ -22,6 +23,8 @@ from .plots import (
     VARIANT_TITLE,
     comparison_figure,
     fdr_power_figure,
+    goodhart_figure,
+    reuse_figure,
 )
 from .registry import GAP_FILTERS
 from .strategies import oracle
@@ -170,6 +173,51 @@ def run_agent_experiment(quick: bool, jobs: int) -> None:
     print(f"agent results written to {out}/")
 
 
+def run_reuse(quick: bool, jobs: int) -> None:
+    """Experiment 2: the hill-climber, then the agent from stored replies."""
+    out = Path("results/quick" if quick else "results")
+    start = time.time()
+    truth = pd.read_csv(out / "truth.csv")
+    table = holdout_reuse.climb(truth, 20 if quick else cfg.N_WORLDS, jobs)
+    climber = pd.concat(
+        holdout_reuse.summarise_reuse(table, threshold).assign(true_threshold=threshold)
+        for threshold in cfg.TRUTH_THRESHOLDS
+    )
+    climber.to_csv(out / "exp2_climber.csv", index=False, float_format="%.4f")
+    print(f"hill-climber: {table.world.nunique()} worlds, {time.time() - start:.0f}s")
+
+    model = Model(cfg.AGENT_PROVIDER, cfg.API_MODEL)
+    rounds = holdout_reuse.agent_runs(
+        model, 2 if quick else cfg.REUSE_AGENT_SEEDS, jobs
+    )
+    rounds.to_csv(out / "exp2_agent_rounds.csv", index=False, float_format="%.4f")
+    agent = holdout_reuse.summarise_reuse(rounds)
+    agent.to_csv(out / "exp2_agent.csv", index=False, float_format="%.4f")
+    main = climber[
+        (climber.true_threshold == cfg.TRUE_SHARPE_MIN)
+        & (climber.world_type == "no_signal")
+    ]
+    panels = [
+        (f"Hill-climber, {main.n_worlds.max()} worlds", main),
+        (f"LLM agent, {agent.n_worlds.max()} worlds", agent),
+    ]
+    reuse_figure(panels, out / "figures" / "exp2_holdout_reuse.png")
+    print(f"experiment 2 written to {out}/")
+
+
+def run_goodhart(quick: bool, jobs: int) -> None:
+    """Experiment 3 from stored replies (no model call)."""
+    out = Path("results/quick" if quick else "results")
+    model = Model(cfg.AGENT_PROVIDER, cfg.API_MODEL)
+    runs = goodhart.runs(model, 2 if quick else cfg.GOODHART_SEEDS, jobs)
+    summary = goodhart.summarise_goodhart(runs)
+    summary.to_csv(out / "exp3_points.csv", index=False, float_format="%.4f")
+    per_run = goodhart.describe(runs)
+    per_run.to_csv(out / "exp3_runs.csv", index=False, float_format="%.4f")
+    goodhart_figure(summary, out / "figures" / "exp3_goodhart.png")
+    print(f"experiment 3 written to {out}/")
+
+
 def calibrate(n_paths: int = 50) -> None:
     """Find the kappa that gives each target oracle Sharpe, by interpolation.
 
@@ -276,7 +324,11 @@ def pilot(model: Model, live: bool, history: str) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(prog="overfitlab")
     parser.add_argument(
-        "command", choices=["all", "calibrate", "pilot", "generate", "agent"]
+        "command",
+        choices=["all", "calibrate", "pilot", "generate", "agent", "exp2", "exp3"],
+    )
+    parser.add_argument(
+        "--experiment", type=int, default=1, choices=[1, 2, 3], help="for generate"
     )
     parser.add_argument("--quick", action="store_true", help="small run for a check")
     parser.add_argument("--jobs", type=int, default=max(1, (os.cpu_count() or 2) - 2))
@@ -292,7 +344,13 @@ def main() -> None:
     elif args.command == "calibrate":
         calibrate()
     elif args.command == "generate":  # the only command that calls the API
-        generate(Model(cfg.AGENT_PROVIDER, cfg.API_MODEL))
+        model = Model(cfg.AGENT_PROVIDER, cfg.API_MODEL)
+        calls = {1: generate, 2: holdout_reuse.generate_agents, 3: goodhart.generate}
+        calls[args.experiment](model)
+    elif args.command == "exp2":
+        run_reuse(args.quick, args.jobs)
+    elif args.command == "exp3":
+        run_goodhart(args.quick, args.jobs)
     elif args.command == "agent":
         run_agent_experiment(args.quick, args.jobs)
     else:
