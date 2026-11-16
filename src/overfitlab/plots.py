@@ -10,6 +10,7 @@ import matplotlib
 
 matplotlib.use("Agg")  # draw to files, no window needed
 import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
 
 from . import config as cfg
@@ -26,6 +27,7 @@ STYLE = {
     "bh": ("#008300", "P", False),
     "by": ("#008300", "P", True),
     "romano_wolf": ("#6250d6", "X", False),
+    "pbo": ("#e34948", "*", False),
 }
 LABEL = {
     "naive": "Naive Sharpe",
@@ -37,6 +39,7 @@ LABEL = {
     "bh": "Benjamini-Hochberg",
     "by": "Benjamini-Yekutieli",
     "romano_wolf": "Romano-Wolf",
+    "pbo": "PBO (best strategy only)",
 }
 INK, MUTED, GRID, SURFACE = "#0b0b0b", "#898781", "#e1e0d9", "#fcfcfb"
 
@@ -110,6 +113,86 @@ def fdr_power_figure(curves: pd.DataFrame, points: pd.DataFrame, path: Path) -> 
         fontsize=11,
         color=INK,
     )
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(path, dpi=160, bbox_inches="tight")
+    plt.close(fig)
+
+
+def variant_figure(points: pd.DataFrame, path: Path) -> None:
+    """Each filter at its conventional cut: plain worlds against harder ones.
+
+    Columns: no signal and medium signal with regime switching, obvious signal
+    with alpha decay. Top row FDR, bottom row power, bars are 95% intervals.
+    """
+    panels = [
+        ("No signal", "no_signal", "no_signal_regimes", "Regime switching"),
+        ("Medium signal", "all_medium", "all_medium_regimes", "Regime switching"),
+        ("Obvious signal", "all_obvious", "all_obvious_decay", "Alpha decay"),
+    ]
+    names = list(STYLE)
+    height = np.arange(len(names))[::-1]
+    fig, axes = plt.subplots(2, 3, figsize=(13, 7.6), sharey=True)
+    fig.set_facecolor(SURFACE)
+    for column, (title, plain, harder, label) in enumerate(panels):
+        for row, measure in enumerate(("fdr", "power")):
+            ax = axes[row, column]
+            series = (
+                (plain, "Plain world", "#2a78d6", "o", 0.17),
+                (harder, label, "#eb6834", "s", -0.17),
+            )
+            for group, tag, colour, marker, shift in series:
+                rows = points[points.worlds == group].set_index("filter").loc[names]
+                low = rows[measure] - rows[f"{measure}_low"]
+                high = rows[f"{measure}_high"] - rows[measure]
+                ax.errorbar(
+                    rows[measure],
+                    height + shift,
+                    xerr=[low, high],
+                    fmt=marker,
+                    color=colour,
+                    markersize=7,
+                    markeredgecolor=SURFACE,
+                    elinewidth=1.2,
+                    capsize=2,
+                    label=tag,
+                )
+            if row == 0:
+                ax.set_title(title, fontsize=10, color=INK, pad=26)
+                ax.legend(
+                    frameon=False,
+                    fontsize=9,
+                    ncol=2,
+                    loc="lower center",
+                    bbox_to_anchor=(0.5, 0.99),
+                )
+            undefined = points[points.worlds == plain][measure].isna().all()
+            if undefined:
+                ax.text(
+                    0.5,
+                    0.5,
+                    "No real strategy exists,\nso power is undefined",
+                    transform=ax.transAxes,
+                    ha="center",
+                    color=MUTED,
+                )
+            ax.set_xlabel("FDR" if measure == "fdr" else "Power", color=MUTED)
+            ax.set_xlim(left=-0.01)
+            if undefined:
+                ax.set_xticks([])
+                ax.set_xlabel("")
+            ax.set_yticks(height, [LABEL[name] for name in names])
+            ax.set_facecolor(SURFACE)
+            ax.grid(color=GRID, linewidth=0.8, axis="x")
+            ax.tick_params(colors=MUTED, length=0)
+            for side in ax.spines.values():
+                side.set_visible(False)
+    fig.suptitle(
+        "Filters at their conventional cut: plain worlds against regime "
+        "switching and alpha decay (bars = 95% interval)",
+        fontsize=11,
+        color=INK,
+    )
+    fig.tight_layout()
     path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(path, dpi=160, bbox_inches="tight")
     plt.close(fig)

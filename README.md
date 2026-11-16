@@ -1,6 +1,6 @@
 # Backtest Overfitting Lab
 
-**Work in progress: Stage 2 of 6 is done.** This README is a placeholder; the
+**Work in progress: Stage 3 of 6 is done.** This README is a placeholder; the
 full write-up comes with the last stage.
 
 **Question:** when many trading strategies are backtested on the same data,
@@ -14,11 +14,12 @@ are measured over hundreds of simulated worlds.
 
 ## Results so far
 
-Brute-force grid search of 76 strategies against nine filters: naive Sharpe
+Brute-force grid search of 76 strategies against ten filters: naive Sharpe
 threshold, single holdout, walk-forward, deflated Sharpe ratio (as published
 and a variant), combinatorial purged cross-validation, Benjamini-Hochberg,
-Benjamini-Yekutieli and Romano-Wolf. Notes with tables:
-[Stage 1](results/stage1.md), [Stage 2](results/stage2.md).
+Benjamini-Yekutieli, Romano-Wolf and the probability of backtest overfitting.
+Notes with tables: [Stage 1](results/stage1.md), [Stage 2](results/stage2.md),
+[Stage 3](results/stage3.md).
 
 ![FDR against power](results/figures/exp1_grid_fdr_power.png)
 
@@ -33,12 +34,21 @@ under "no edge" and an effective number of independent trials accepts nothing
 on noise and finds 32% of the real strategies when the signal is obvious.
 Details in the [Stage 2 note](results/stage2.md).
 
+**Finding so far: no in-sample filter protects against a signal that fades.**
+When the planted signal halves every 5 years, between a third and two thirds
+of what the research-sample filters accept is worth less than Sharpe 0.2 in
+the 5 years after the backtest (naive 69%, Benjamini-Hochberg 51%, Romano-Wolf
+55%). The holdout does best at 18%, only because its data is the most recent.
+Details in the [Stage 3 note](results/stage3.md).
+
+![Plain worlds against regime switching and alpha decay](results/figures/exp1_grid_regimes_decay.png)
+
 ## Setup and usage
 
 ```bash
 uv sync
 uv run pytest -q
-uv run python -m overfitlab all          # every experiment, about 7 minutes
+uv run python -m overfitlab all          # every experiment, about 10 minutes
 uv run python -m overfitlab all --quick  # small check run, writes to results/quick
 ```
 
@@ -47,8 +57,9 @@ All randomness derives from one master seed (`20261116` in
 
 ## Limitations
 
-- **Simulated markets.** They have fat tails, volatility clustering and
-  correlated assets, but are far simpler than real markets.
+- **Simulated markets.** They have fat tails, volatility clustering, correlated
+  assets, and optionally regime switching and alpha decay, but are far simpler
+  than real markets.
 - **Daily data only.**
 - **Two methods rest on secondary sources.** The CPCV chapter (Lopez de Prado
   2018) and the paper behind the effective number of trials (Galwey 2009) are
@@ -57,5 +68,5 @@ All randomness derives from one master seed (`20261116` in
   from an R package's documentation. Neither was checked against the original.
 - **The CPCV accept rule is my own.** The book gives the paths, not a decision
   rule; the one used here is stated and tested in the Stage 2 note.
-- **Not finished.** PBO, regime switching, the LLM agent and Thresholdout are
+- **Not finished.** The LLM agent, Thresholdout and the real-data check are
   still to come.

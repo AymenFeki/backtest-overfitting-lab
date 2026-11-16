@@ -21,6 +21,7 @@ from .worlds import draw_shocks, simulate, to_prices, world
 
 GRID = grid()
 _BATCH = 10  # worlds or truth paths handled by one worker call
+_AFTER = cfg.DEPLOYMENT_YEARS
 
 
 def _parallel(function: Callable, tasks: list, jobs: int) -> Iterable:
@@ -40,18 +41,26 @@ def _batches(n_specs: int, n_items: int) -> list[tuple[int, range]]:
 
 # --- 1. truth ----------------------------------------------------------------
 def _truth_batch(task: tuple[int, range]) -> np.ndarray:
-    """Sharpe of every grid strategy, plus the oracle, on fresh 100-year paths."""
+    """Sharpe of every grid strategy, plus the oracle, on fresh paths.
+
+    Normally a path is 100 years. With alpha decay the truth that matters is
+    what a strategy earns after the backtest, so a path is the 10 backtest
+    years plus the 5 years after, and only those 5 years are scored.
+    """
     spec_index, paths = task
     spec = cfg.SPECS[spec_index]
     seeds = [cfg.seed("truth", spec_index, p) for p in paths]
-    n_days = cfg.TRUTH_YEARS * cfg.PERIODS_PER_YEAR
+    start, years = 0, cfg.TRUTH_YEARS
+    if spec.half_life_years:
+        start, years = cfg.N_DAYS, cfg.N_DAYS // cfg.PERIODS_PER_YEAR + _AFTER
     out = []
-    for returns in simulate(spec, draw_shocks(seeds, n_days)):
+    for returns in simulate(spec, draw_shocks(seeds, years * cfg.PERIODS_PER_YEAR)):
         prices = to_prices(returns)
-        sharpes = sharpe(run_all(prices, GRID))
+        sharpes = sharpe(run_all(prices, GRID).iloc[start:])
         best = np.nan
         if spec.kappa:
-            best = sharpe(net_returns(prices, oracle(spec).positions(prices)))
+            trades = net_returns(prices, oracle(spec).positions(prices))
+            best = sharpe(trades.iloc[start:])
         out.append(np.append(sharpes, best))
     return np.array(out)
 
@@ -62,7 +71,15 @@ def true_sharpes(n_paths: int = cfg.TRUTH_PATHS, jobs: int = 1) -> pd.DataFrame:
     Each path gives one Sharpe estimate; paths are independent, so the standard
     error of their mean is their standard deviation / sqrt(number of paths).
     """
-    tasks = _batches(len(cfg.SPECS), n_paths)
+    # Decay worlds score 5 years per path instead of 100, so they get 20 times
+    # as many paths: the same 10,000 scored years per world type.
+    more = cfg.TRUTH_YEARS // _AFTER
+    tasks = [
+        (spec_index, range(start, min(start + _BATCH, total)))
+        for spec_index, spec in enumerate(cfg.SPECS)
+        for total in [n_paths * (more if spec.half_life_years else 1)]
+        for start in range(0, total, _BATCH)
+    ]
     results = list(_parallel(_truth_batch, tasks, jobs))
     names = [s.name for s in GRID] + ["oracle"]
     frames = []
@@ -108,13 +125,16 @@ def grid_scores(
 
 # --- 3. summary --------------------------------------------------------------
 def _groups() -> dict[str, list[int]]:
-    """World types one by one, and pooled by signal strength."""
+    """World types one by one, and pooled by signal strength and variant.
+
+    Pooled names: all_medium, all_medium_regimes, all_obvious_decay, ...
+    """
     groups = {spec.name: [i] for i, spec in enumerate(cfg.SPECS)}
-    for strength in cfg.STRENGTH_TARGETS:
-        groups[f"all_{strength}"] = [
-            i for i, spec in enumerate(cfg.SPECS) if spec.strength == strength
-        ]
-    return {name: indices for name, indices in groups.items() if indices}
+    for i, spec in enumerate(cfg.SPECS):
+        if spec.kappa:
+            suffix = "" if spec.variant == "base" else f"_{spec.variant}"
+            groups.setdefault(f"all_{spec.strength}{suffix}", []).append(i)
+    return groups
 
 
 def summarise(

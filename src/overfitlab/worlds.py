@@ -10,6 +10,13 @@ Daily return of asset i:
   clustering: calm and wild periods come in runs).
 * `mu` is the planted signal. In the null world it is zero for every asset and
   every day, so no strategy has an edge and costs make all of them lose.
+
+Two optional complications (Stage 3):
+
+* Regime switching: a hidden two-state Markov chain (calm/crisis). In a crisis
+  the factor's volatility triples and asset-specific volatility rises by half,
+  so everything moves more and moves together.
+* Alpha decay: the planted signal's strength halves every few years.
 """
 
 from collections.abc import Sequence
@@ -26,6 +33,7 @@ _TARGET_VAR = (
     / cfg.PERIODS_PER_YEAR
 )
 ASSET_VOL = np.sqrt(BETAS**2 * _TARGET_VAR[0] + _TARGET_VAR[1:])  # daily
+_CRISIS_SCALE = np.r_[cfg.CRISIS_FACTOR_VOL, np.full(cfg.N_ASSETS, cfg.CRISIS_IDIO_VOL)]
 
 
 def planted_signal(signal: str, z: np.ndarray) -> np.ndarray:
@@ -44,16 +52,20 @@ def planted_signal(signal: str, z: np.ndarray) -> np.ndarray:
 
 
 def draw_shocks(seeds: Sequence[np.random.SeedSequence], n_days: int) -> np.ndarray:
-    """Unit-variance Student-t shocks, shape (paths, days, 1 + assets).
+    """All randomness of each path, shape (paths, days, 2 + assets).
 
-    One seed per path, so each path can be regenerated on its own.
+    Columns: unit-variance Student-t shocks for the factor and each asset,
+    then one uniform draw per day that drives the regime switch. One seed per
+    path, so each path can be regenerated on its own.
     """
     df = cfg.STUDENT_T_DF
     scale = np.sqrt(df / (df - 2))  # a t variable has variance df / (df - 2)
-    size = (n_days, 1 + cfg.N_ASSETS)
-    return np.stack(
-        [np.random.default_rng(s).standard_t(df, size) / scale for s in seeds]
-    )
+    out = []
+    for seed in seeds:
+        rng = np.random.default_rng(seed)
+        shocks = rng.standard_t(df, (n_days, 1 + cfg.N_ASSETS)) / scale
+        out.append(np.column_stack([shocks, rng.uniform(size=n_days)]))
+    return np.stack(out)
 
 
 def simulate(spec: cfg.WorldSpec, shocks: np.ndarray) -> np.ndarray:
@@ -61,7 +73,9 @@ def simulate(spec: cfg.WorldSpec, shocks: np.ndarray) -> np.ndarray:
 
     The loop over days is needed because today's variance and today's planted
     drift both depend on yesterday's outcome. Everything inside the loop is
-    vectorised over paths and assets.
+    vectorised over paths and assets. A crisis scales the shock itself; the
+    GARCH recursion keeps running on the unscaled shock, so the two sources of
+    changing volatility multiply instead of feeding each other.
     """
     n_paths, n_days, _ = shocks.shape
     omega = (1 - cfg.GARCH_ALPHA - cfg.GARCH_BETA) * _TARGET_VAR
@@ -69,14 +83,22 @@ def simulate(spec: cfg.WorldSpec, shocks: np.ndarray) -> np.ndarray:
     lookback = cfg.SIGNAL_LOOKBACK.get(spec.signal, 0)
     cumulative = np.zeros((n_paths, n_days + 1, cfg.N_ASSETS))
     returns = np.empty((n_paths, n_days, cfg.N_ASSETS))
+    crisis = np.zeros(n_paths, dtype=bool)
+    half_life = spec.half_life_years * cfg.PERIODS_PER_YEAR
 
     for t in range(n_days):
-        eps = np.sqrt(variance) * shocks[:, t]
-        r = BETAS * eps[:, :1] + eps[:, 1:]
+        eps = np.sqrt(variance) * shocks[:, t, :-1]
+        shock = eps
+        if spec.regimes:
+            draw = shocks[:, t, -1]
+            crisis = np.where(crisis, draw > cfg.REGIME_EXIT, draw < cfg.REGIME_ENTER)
+            shock = eps * np.where(crisis[:, None], _CRISIS_SCALE, 1.0)
+        r = BETAS * shock[:, :1] + shock[:, 1:]
         if spec.kappa and t >= lookback:
             trailing = cumulative[:, t] - cumulative[:, t - lookback]
             z = trailing / (ASSET_VOL * np.sqrt(lookback))
-            r += spec.kappa * ASSET_VOL * planted_signal(spec.signal, z)
+            kappa = spec.kappa * (0.5 ** (t / half_life) if half_life else 1.0)
+            r += kappa * ASSET_VOL * planted_signal(spec.signal, z)
         r = np.clip(r, -0.5, 0.5)  # keeps prices positive in a freak tail draw
         returns[:, t] = r
         cumulative[:, t + 1] = cumulative[:, t] + r

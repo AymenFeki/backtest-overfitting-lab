@@ -52,6 +52,9 @@ class WorldSpec:
     signal: str = "none"  # none | tsmom | xsmom | meanrev
     strength: str = "none"
     kappa: float = 0.0
+    regimes: bool = False  # calm/crisis switching
+    half_life_years: float = 0.0  # alpha decay; 0 = the signal never fades
+    variant: str = "base"  # base | regimes | decay
 
 
 # The null world is labelled "no_signal": pandas reads the text "null" in a
@@ -60,6 +63,43 @@ SPECS = [WorldSpec("no_signal")] + [
     WorldSpec(f"{signal}_{strength}", signal, strength, KAPPA[signal][strength])
     for signal in KAPPA
     for strength in STRENGTH_TARGETS
+]
+
+# --- regime switching and alpha decay (Stage 3) ----------------------------
+# A hidden two-state Markov chain. Daily switching probabilities: calm spells
+# last about 250 days, crises about 50, so about one day in six is a crisis.
+REGIME_ENTER, REGIME_EXIT = 0.004, 0.02
+# In a crisis the common factor's volatility triples and asset-specific
+# volatility rises by half, which lifts the average correlation from about
+# 0.26 to about 0.59.
+CRISIS_FACTOR_VOL, CRISIS_IDIO_VOL = 3.0, 1.5
+DECAY_HALF_LIFE_YEARS = 5.0  # the planted signal halves every 5 years
+DEPLOYMENT_YEARS = 5  # with decay, truth is the Sharpe over the 5 years after
+
+SPECS += [
+    WorldSpec("no_signal_regimes", regimes=True, variant="regimes"),
+    *(
+        WorldSpec(
+            f"{signal}_medium_regimes",
+            signal,
+            "medium",
+            KAPPA[signal]["medium"],
+            regimes=True,
+            variant="regimes",
+        )
+        for signal in KAPPA
+    ),
+    *(
+        WorldSpec(
+            f"{signal}_obvious_decay",
+            signal,
+            "obvious",
+            KAPPA[signal]["obvious"],
+            half_life_years=DECAY_HALF_LIFE_YEARS,
+            variant="decay",
+        )
+        for signal in KAPPA
+    ),
 ]
 
 # --- backtests and experiments ---------------------------------------------

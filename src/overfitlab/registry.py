@@ -12,6 +12,7 @@ from .cpcv import cpcv
 from .dsr import deflated_sharpe, deflated_sharpe_null
 from .filters import holdout, naive_sharpe, walk_forward
 from .multiple import bh_filter, by_filter, romano_wolf_filter
+from .pbo import pbo_filter
 
 
 @dataclass(frozen=True)
@@ -33,6 +34,7 @@ FILTERS = [
     Filter("bh", bh_filter, 0.95, _CONFIDENCE),
     Filter("by", by_filter, 0.95, _CONFIDENCE),
     Filter("romano_wolf", romano_wolf_filter, 0.95, _CONFIDENCE),
+    Filter("pbo", pbo_filter, 0.95, _CONFIDENCE),
 ]
 
 # Sensitivity check: the same CPCV rule with wider gaps around the test groups.

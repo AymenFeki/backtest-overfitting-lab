@@ -64,5 +64,5 @@ def test_split_with_too_little_training_data_trades_nothing():
 
 def test_every_filter_has_a_unique_name_and_a_plot_style():
     names = [f.name for f in FILTERS]
-    assert len(names) == len(set(names)) == 9
+    assert len(names) == len(set(names)) == 10
     assert set(names) == set(STYLE)

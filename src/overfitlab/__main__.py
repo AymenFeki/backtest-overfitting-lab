@@ -11,7 +11,7 @@ import pandas as pd
 from . import config as cfg
 from .backtest import net_returns, sharpe
 from .experiments import grid_scores, summarise, true_sharpes
-from .plots import fdr_power_figure
+from .plots import fdr_power_figure, variant_figure
 from .registry import GAP_FILTERS
 from .strategies import oracle
 from .worlds import draw_shocks, simulate, to_prices
@@ -42,6 +42,7 @@ def run_all(quick: bool, jobs: int) -> None:
     curves.to_csv(out / "exp1_grid_curves.csv", index=False, float_format="%.4f")
     main_points = points[points.true_threshold == cfg.TRUE_SHARPE_MIN]
     fdr_power_figure(curves, main_points, out / "figures" / "exp1_grid_fdr_power.png")
+    variant_figure(main_points, out / "figures" / "exp1_grid_regimes_decay.png")
 
     # CPCV with wider gaps around the test groups, on the first 50 worlds.
     gap_scores = grid_scores(5 if quick else 50, jobs, GAP_FILTERS)
