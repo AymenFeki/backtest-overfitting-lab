@@ -15,7 +15,7 @@ import pandas as pd
 from . import config as cfg
 from .backtest import net_returns, run_all, sharpe
 from .metrics import fdp_and_power, mean_ci
-from .registry import FILTERS
+from .registry import FILTERS, Filter
 from .strategies import grid, oracle
 from .worlds import draw_shocks, simulate, to_prices, world
 
@@ -84,23 +84,25 @@ def true_sharpes(n_paths: int = cfg.TRUTH_PATHS, jobs: int = 1) -> pd.DataFrame:
 
 
 # --- 2. scores ---------------------------------------------------------------
-def _score_batch(task: tuple[int, range]) -> np.ndarray:
+def _score_batch(task: tuple[int, range, list[Filter]]) -> np.ndarray:
     """Filter scores, shape (worlds in batch, filters, strategies)."""
-    spec_index, worlds = task
+    spec_index, worlds, filters = task
     spec = cfg.SPECS[spec_index]
     out = []
     for index in worlds:
         returns = run_all(world(spec, index), GRID)
-        out.append([f.score(returns) for f in FILTERS])
+        out.append([f.score(returns) for f in filters])
     return np.array(out)
 
 
-def grid_scores(n_worlds: int = cfg.N_WORLDS, jobs: int = 1) -> np.ndarray:
-    """Scores of all filters, shape (world types, worlds, filters, strategies)."""
-    tasks = _batches(len(cfg.SPECS), n_worlds)
+def grid_scores(
+    n_worlds: int = cfg.N_WORLDS, jobs: int = 1, filters: list[Filter] = FILTERS
+) -> np.ndarray:
+    """Scores of the filters, shape (world types, worlds, filters, strategies)."""
+    tasks = [(*batch, filters) for batch in _batches(len(cfg.SPECS), n_worlds)]
     results = list(_parallel(_score_batch, tasks, jobs))
     return np.concatenate(results).reshape(
-        len(cfg.SPECS), n_worlds, len(FILTERS), len(GRID)
+        len(cfg.SPECS), n_worlds, len(filters), len(GRID)
     )
 
 
@@ -116,7 +118,11 @@ def _groups() -> dict[str, list[int]]:
 
 
 def summarise(
-    scores: np.ndarray, truth: pd.DataFrame, threshold: float, sweep: bool
+    scores: np.ndarray,
+    truth: pd.DataFrame,
+    threshold: float,
+    sweep: bool,
+    filters: list[Filter] = FILTERS,
 ) -> pd.DataFrame:
     """FDR and power per group of worlds, filter and cut, with 95% intervals.
 
@@ -129,7 +135,7 @@ def summarise(
     is_true = wide.loc[[s.name for s in cfg.SPECS], names].to_numpy() >= threshold
     rows = []
     for group, spec_indices in _groups().items():
-        for f_index, flt in enumerate(FILTERS):
+        for f_index, flt in enumerate(filters):
             for cut in flt.sweep if sweep else [flt.cut]:
                 fdp, power, n_accepted = [], [], []
                 for s in spec_indices:

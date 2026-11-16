@@ -18,7 +18,7 @@ from . import config as cfg
 from .backtest import sharpe
 
 
-def expected_max_sharpe(sharpe_variance: float, n_trials: int) -> float:
+def expected_max_sharpe(sharpe_variance: float, n_trials: float) -> float:
     """SR_0: expected best Sharpe among `n_trials` strategies with no edge.
 
     Paper Eq. (1) with mean zero:
@@ -64,6 +64,44 @@ def deflated_sharpe(returns: pd.DataFrame) -> np.ndarray:
     r = returns.to_numpy()[: cfg.N_RESEARCH]
     daily = sharpe(r) / np.sqrt(cfg.PERIODS_PER_YEAR)
     benchmark = expected_max_sharpe(daily.var(ddof=1), r.shape[1])
+    return probabilistic_sharpe(
+        daily, benchmark, len(r), stats.skew(r), stats.kurtosis(r, fisher=False)
+    )
+
+
+def effective_trials(returns: np.ndarray) -> float:
+    """Effective number of independent trials, from the correlation matrix.
+
+    Galwey (2009): M_eff = (sum of sqrt(eigenvalue))^2 / (sum of eigenvalues),
+    negative eigenvalues set to zero. 76 unrelated strategies give 76, 76
+    copies of one strategy give 1, and a strategy with its mirror image gives
+    1, because eigenvalues ignore the sign of a correlation.
+
+    Formula taken from the documentation of the R package poolr (`meff`); the
+    paper itself (Genetic Epidemiology 33, 559-568) is behind a paywall.
+    """
+    traded = returns[:, returns.std(axis=0) > 0]  # a flat strategy is no trial
+    eigenvalues = np.linalg.eigvalsh(np.corrcoef(traded, rowvar=False))
+    eigenvalues = np.maximum(eigenvalues, 0.0)
+    return float(np.sqrt(eigenvalues).sum() ** 2 / eigenvalues.sum())
+
+
+def deflated_sharpe_null(returns: pd.DataFrame) -> np.ndarray:
+    """Variant of the DSR for a set of trials with different true Sharpe ratios.
+
+    Not the paper's formula. Two changes to the benchmark SR_0:
+
+    * V is the variance a Sharpe estimate has when the true Sharpe is zero,
+      instead of the variance across trials. A Sharpe estimate has variance
+      (1 - skew * SR + (kurt - 1)/4 * SR^2) / (T - 1); at SR = 0 the skewness
+      and kurtosis terms vanish and V = 1 / (T - 1) exactly.
+    * N is the effective number of independent trials (see effective_trials).
+
+    The test itself is unchanged, including its skewness/kurtosis correction.
+    """
+    r = returns.to_numpy()[: cfg.N_RESEARCH]
+    daily = sharpe(r) / np.sqrt(cfg.PERIODS_PER_YEAR)
+    benchmark = expected_max_sharpe(1 / (len(r) - 1), effective_trials(r))
     return probabilistic_sharpe(
         daily, benchmark, len(r), stats.skew(r), stats.kurtosis(r, fisher=False)
     )

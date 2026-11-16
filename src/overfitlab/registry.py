@@ -2,15 +2,16 @@
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from functools import partial
 
 import numpy as np
 import pandas as pd
 
 from . import config as cfg
 from .cpcv import cpcv
-from .dsr import deflated_sharpe
+from .dsr import deflated_sharpe, deflated_sharpe_null
 from .filters import holdout, naive_sharpe, walk_forward
-from .multiple import bh_filter, romano_wolf_filter
+from .multiple import bh_filter, by_filter, romano_wolf_filter
 
 
 @dataclass(frozen=True)
@@ -27,7 +28,15 @@ FILTERS = [
     Filter("holdout", holdout, 0.95, _CONFIDENCE),
     Filter("walk_forward", walk_forward, 0.95, _CONFIDENCE),
     Filter("dsr", deflated_sharpe, 0.95, _CONFIDENCE),
+    Filter("dsr_null", deflated_sharpe_null, 0.95, _CONFIDENCE),
     Filter("cpcv", cpcv, 0.0, np.linspace(0, 2, 21)),
     Filter("bh", bh_filter, 0.95, _CONFIDENCE),
+    Filter("by", by_filter, 0.95, _CONFIDENCE),
     Filter("romano_wolf", romano_wolf_filter, 0.95, _CONFIDENCE),
+]
+
+# Sensitivity check: the same CPCV rule with wider gaps around the test groups.
+GAP_FILTERS = [
+    Filter(f"cpcv_gap_{gap}", partial(cpcv, gap=gap), 0.0, np.array([0.0]))
+    for gap in (20, 60, 250)
 ]

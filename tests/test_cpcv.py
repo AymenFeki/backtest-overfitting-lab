@@ -55,7 +55,14 @@ def test_cpcv_rule_on_constructed_strategies():
     assert scores[2] == 0  # never passes the screen, never traded: not accepted
 
 
+def test_split_with_too_little_training_data_trades_nothing():
+    # A gap wider than the sample leaves no training days in any split.
+    always_good = pd.DataFrame({"a": NOISE + 0.001})
+    assert cpcv(always_good, gap=10_000)[0] == 0
+    assert cpcv(always_good)[0] > 0
+
+
 def test_every_filter_has_a_unique_name_and_a_plot_style():
     names = [f.name for f in FILTERS]
-    assert len(names) == len(set(names)) == 7
+    assert len(names) == len(set(names)) == 9
     assert set(names) == set(STYLE)

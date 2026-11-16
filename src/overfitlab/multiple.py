@@ -4,7 +4,8 @@ Both methods start from one test per strategy of "mean daily return <= 0" and
 then correct for the fact that many strategies were tested at once.
 
 * Benjamini-Hochberg (1995) controls the false discovery rate: the expected
-  share of accepted strategies that are false.
+  share of accepted strategies that are false. Benjamini-Yekutieli (2001) is
+  its stricter version that needs no assumption on how the tests depend.
 * Romano-Wolf (2005, 2016) controls the familywise error rate: the probability
   of even one false acceptance. It uses a bootstrap, so it learns how the
   strategies move together instead of assuming the worst case.
@@ -33,6 +34,17 @@ def benjamini_hochberg(p_values: np.ndarray) -> np.ndarray:
     adjusted = np.empty(m)
     adjusted[order] = np.minimum(np.minimum.accumulate(scaled[::-1])[::-1], 1.0)
     return adjusted
+
+
+def benjamini_yekutieli(p_values: np.ndarray) -> np.ndarray:
+    """BY adjusted p-values: BH run at level q / (1 + 1/2 + ... + 1/m).
+
+    Benjamini & Yekutieli (2001), Theorem 1.3: with this smaller level the FDR
+    is controlled under any dependence between the tests. BH itself is only
+    proven for independent or positively dependent tests (their Theorem 1.2).
+    """
+    harmonic = (1 / np.arange(1, len(p_values) + 1)).sum()
+    return np.minimum(benjamini_hochberg(p_values) * harmonic, 1.0)
 
 
 def _block_sums(x: np.ndarray, block: int) -> np.ndarray:
@@ -107,6 +119,12 @@ def bh_filter(returns: pd.DataFrame) -> np.ndarray:
     """Score = 1 - BH adjusted p-value on the research sample."""
     r = returns.to_numpy()[: cfg.N_RESEARCH]
     return 1 - benjamini_hochberg(1 - confidence(r))
+
+
+def by_filter(returns: pd.DataFrame) -> np.ndarray:
+    """Score = 1 - BY adjusted p-value on the research sample."""
+    r = returns.to_numpy()[: cfg.N_RESEARCH]
+    return 1 - benjamini_yekutieli(1 - confidence(r))
 
 
 def romano_wolf_filter(returns: pd.DataFrame) -> np.ndarray:

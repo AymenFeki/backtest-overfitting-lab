@@ -35,6 +35,7 @@ import pandas as pd
 from . import config as cfg
 
 N_GROUPS, N_TEST, GAP = 10, 3, 20
+MIN_TRAIN = cfg.PERIODS_PER_YEAR  # a split with less training data trades nothing
 
 
 def splits(n_groups: int, n_test: int) -> list[tuple[int, ...]]:
@@ -81,10 +82,11 @@ def cpcv(
     # Sharpe of every strategy on every split's training days, via sums.
     train = train_masks(n_days, n_groups, n_test, gap).astype(float)
     n_train = train.sum(axis=1, keepdims=True)
-    mean = train @ r / n_train
-    variance = (train @ r**2 - n_train * mean**2) / (n_train - 1)
     with np.errstate(divide="ignore", invalid="ignore"):
+        mean = train @ r / n_train
+        variance = (train @ r**2 - n_train * mean**2) / (n_train - 1)
         traded = annual * mean / np.sqrt(variance) >= screen  # (splits, strategies)
+    traded &= n_train >= MIN_TRAIN
 
     # Path returns = each group's returns where traded, zero where flat.
     edges = np.linspace(0, n_days, n_groups + 1).astype(int)[:-1]

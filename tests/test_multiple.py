@@ -4,7 +4,12 @@ from scipy import stats
 
 from overfitlab import config as cfg
 from overfitlab.filters import confidence
-from overfitlab.multiple import _block_sums, benjamini_hochberg, romano_wolf
+from overfitlab.multiple import (
+    _block_sums,
+    benjamini_hochberg,
+    benjamini_yekutieli,
+    romano_wolf,
+)
 from overfitlab.worlds import draw_shocks, simulate
 
 # The 15 ordered p-values of the example in Benjamini & Hochberg (1995), p. 295.
@@ -25,6 +30,15 @@ def test_bh_matches_scipy_in_any_order():
     shuffled = np.random.default_rng(0).permutation(PAPER_P)
     expected = stats.false_discovery_control(shuffled, method="bh")
     assert benjamini_hochberg(shuffled) == pytest.approx(expected)
+
+
+def test_by_is_bh_scaled_by_the_harmonic_sum():
+    shuffled = np.random.default_rng(5).permutation(PAPER_P)
+    expected = stats.false_discovery_control(shuffled, method="by")
+    assert benjamini_yekutieli(shuffled) == pytest.approx(expected)
+    # 1 + 1/2 + ... + 1/15 = 3.318, so the paper example keeps 3 of BH's 4.
+    assert (benjamini_yekutieli(PAPER_P) <= 0.05).sum() == 3
+    assert (benjamini_yekutieli(PAPER_P) >= benjamini_hochberg(PAPER_P)).all()
 
 
 def test_bh_has_nominal_rate_when_nothing_is_true():

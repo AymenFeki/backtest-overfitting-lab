@@ -1,4 +1,8 @@
-"""Figures. One colour and one marker shape per filter, in a fixed order."""
+"""Figures. One colour and one marker shape per filter, in a fixed order.
+
+A variant of a filter shares its parent's colour and is drawn dashed with a
+hollow marker, so the palette never needs more than eight hues.
+"""
 
 from pathlib import Path
 
@@ -11,22 +15,27 @@ import pandas as pd
 from . import config as cfg
 
 # Fixed slot per filter, so a filter keeps its colour in every figure.
+# name: (colour, marker, is a variant of the filter above it)
 STYLE = {
-    "naive": ("#2a78d6", "o"),
-    "holdout": ("#eb6834", "s"),
-    "walk_forward": ("#1baf7a", "^"),
-    "dsr": ("#eda100", "D"),
-    "cpcv": ("#e87ba4", "v"),
-    "bh": ("#008300", "P"),
-    "romano_wolf": ("#6250d6", "X"),
+    "naive": ("#2a78d6", "o", False),
+    "holdout": ("#eb6834", "s", False),
+    "walk_forward": ("#1baf7a", "^", False),
+    "dsr": ("#eda100", "D", False),
+    "dsr_null": ("#eda100", "D", True),
+    "cpcv": ("#e87ba4", "v", False),
+    "bh": ("#008300", "P", False),
+    "by": ("#008300", "P", True),
+    "romano_wolf": ("#6250d6", "X", False),
 }
 LABEL = {
     "naive": "Naive Sharpe",
     "holdout": "Holdout",
     "walk_forward": "Walk-forward",
-    "dsr": "Deflated Sharpe",
+    "dsr": "Deflated Sharpe (paper)",
+    "dsr_null": "Deflated Sharpe (variant)",
     "cpcv": "CPCV",
     "bh": "Benjamini-Hochberg",
+    "by": "Benjamini-Yekutieli",
     "romano_wolf": "Romano-Wolf",
 }
 INK, MUTED, GRID, SURFACE = "#0b0b0b", "#898781", "#e1e0d9", "#fcfcfb"
@@ -46,10 +55,11 @@ def fdr_power_figure(curves: pd.DataFrame, points: pd.DataFrame, path: Path) -> 
     fig.set_facecolor(SURFACE)
     for ax, strength in zip(axes, strengths, strict=True):
         group = f"all_{strength}"
-        for name, (colour, marker) in STYLE.items():
+        for name, (colour, marker, variant) in STYLE.items():
+            line = "--" if variant else "-"
             curve = curves[(curves.worlds == group) & (curves["filter"] == name)]
             curve = curve.sort_values("cut")
-            ax.plot(curve.power, curve.fdr, color=colour, linewidth=2)
+            ax.plot(curve.power, curve.fdr, color=colour, linewidth=2, linestyle=line)
             p = points[(points.worlds == group) & (points["filter"] == name)].iloc[0]
             ax.errorbar(
                 p.power,
@@ -57,9 +67,11 @@ def fdr_power_figure(curves: pd.DataFrame, points: pd.DataFrame, path: Path) -> 
                 xerr=[[p.power - p.power_low], [p.power_high - p.power]],
                 yerr=[[p.fdr - p.fdr_low], [p.fdr_high - p.fdr]],
                 color=colour,
+                linestyle=line,
                 marker=marker,
                 markersize=8,
-                markeredgecolor=SURFACE,
+                markerfacecolor=SURFACE if variant else colour,
+                markeredgecolor=colour if variant else SURFACE,
                 markeredgewidth=1.5,
                 elinewidth=1.2,
                 capsize=2,
@@ -87,14 +99,14 @@ def fdr_power_figure(curves: pd.DataFrame, points: pd.DataFrame, path: Path) -> 
         handles,
         labels,
         loc="lower center",
-        ncol=len(labels),
+        ncol=5,
         frameon=False,
-        bbox_to_anchor=(0.5, 0.97),
+        bbox_to_anchor=(0.5, 0.96),
     )
     fig.suptitle(
         "Grid search: false discoveries against power, by filter "
         "(marker = conventional cut, bars = 95% interval)",
-        y=1.13,
+        y=1.2,
         fontsize=11,
         color=INK,
     )
