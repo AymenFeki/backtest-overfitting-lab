@@ -25,6 +25,7 @@ from .sandbox import run_on_paths
 from .worlds import draw_shocks, simulate, to_prices, world
 
 _BATCH = 10  # truth paths simulated by one worker call
+TRUTH_WORKERS = 4  # each holds 10 paths x 100 years of prices and one child
 
 
 def _worlds(n_seeds: int) -> list[tuple[int, int]]:
@@ -97,12 +98,15 @@ def _truth_batch(task: tuple[int, range, list[str]]) -> np.ndarray:
     tables = [to_prices(r) for r in simulate(spec, draw_shocks(seeds, days))]
     prices = np.stack([t.to_numpy() for t in tables])
     out = np.full((len(tables), len(codes)), np.nan)
+    # One strategy at a time: its weights are scored and dropped before the
+    # next strategy runs, so a worker never holds more than one such array.
     for column, weights in enumerate(run_on_paths(codes, prices)):
         if weights is None:
             continue  # failed on long paths: its truth stays unknown
         for row, table in enumerate(tables):
             held = pd.DataFrame(weights[row], columns=table.columns)
             out[row, column] = sharpe(net_returns(table, held))
+        del weights
     return out
 
 
@@ -121,7 +125,7 @@ def agent_truth(
         for spec_index in specs
         for start in range(0, n_paths, _BATCH)
     ]
-    results = list(_parallel(_truth_batch, tasks, jobs))
+    results = list(_parallel(_truth_batch, tasks, min(jobs, TRUTH_WORKERS)))
     frames = []
     for spec_index, mine in by_spec.items():
         per_path = np.concatenate(

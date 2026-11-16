@@ -20,6 +20,7 @@ import json
 import subprocess
 import sys
 import tempfile
+from collections.abc import Iterator
 from pathlib import Path
 
 import numpy as np
@@ -169,22 +170,24 @@ def run_strategy(
 
 def run_on_paths(
     sources: list[str], prices: np.ndarray, timeout: float = 600.0
-) -> list[np.ndarray | None]:
+) -> Iterator[np.ndarray | None]:
     """Weights of several accepted strategies on several price paths.
 
     `prices` has shape (paths, days, assets). Used to measure a strategy's
     true Sharpe on fresh data, so the look-ahead test is not repeated. One
     process per strategy; a strategy that fails here gives None.
+
+    This is a generator: it hands over one strategy's weights at a time. The
+    caller must use them and let them go before asking for the next, because
+    one array is about 20 MB and a world type has hundreds of strategies.
     """
-    out: list[np.ndarray | None] = []
     with tempfile.TemporaryDirectory() as folder:
         work = Path(folder)
         np.save(work / "prices.npy", prices)
         for source in sources:
             (work / "strategy.py").write_text(source)
             usable = check_code(source) is None and _launch(work, timeout) == "ok"
-            out.append(np.load(work / "weights.npy") if usable else None)
-    return out
+            yield np.load(work / "weights.npy") if usable else None
 
 
 def _safe_import(name: str, *args: object, **kwargs: object) -> object:
