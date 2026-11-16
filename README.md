@@ -100,17 +100,58 @@ is told the result on the research sample.
   version is a trial. Failed code was never backtested, so it told the model
   nothing about the data and does not count as a trial for the corrections.
 - **Reproducibility.** Every model reply is stored under a hash of the full
-  request (`cache/llm/`), and experiments are re-scored from those files
-  without calling a model.
+  request and committed to this repo (`cache/llm/`). Experiments are re-scored
+  from those files without calling a model. For the Claude runs the stored
+  replies are the only reproducibility guarantee: the model accepts neither a
+  seed nor a temperature, so a fresh run would produce different strategies.
+  The files hold the replies, token counts, timing and cost, and nothing else.
+- **What the agent already knows.** The planted signals (momentum,
+  cross-sectional momentum, short-term reversal) are textbook ideas, and the
+  model has read the textbooks. It proposes them without seeing any data, so
+  its power here partly reflects prior knowledge, not discovery from the
+  backtests. A signal that is in no textbook would be a harder and fairer test.
+
+### Which model, and why it changed
+
+The plan was to run the bulk of the agent experiments on a free local model
+and add a small comparison on Claude Haiku 5.5. The local models did not get
+through the gate set beforehand (about 80% of rounds must give a usable,
+look-ahead-free strategy), so the bulk now runs on Haiku under a hard cap of
+$2.00 for all API calls, checked in code before every call.
+
+Pilot: one agent run of 20 rounds on each of two worlds (no signal, medium
+momentum), same prompt for every model.
+
+| Model | Usable rounds | Look-ahead rejections | Distinct strategies | Seconds per round | Cost |
+|---|---|---|---|---|---|
+| Claude Haiku 5.5 | 40 of 40 (100%) | 0 | 38 | 2.7 | $0.014 |
+| qwen2.5-coder:7b (local, 4.7 GB) | 4 of 40 (10%) | 19 | 4 | 39 | free |
+| mimo-v2.6:9b (local, 6.6 GB), first world only | 3 of 20 (15%) | 10 | 3 | 50 | free |
+
+Most failed rounds of the local models ended in a plain error: weights of the
+wrong shape, or pandas arguments that do not exist (28 of the 7B model's 36
+failed rounds, 14 of mimo's 17). The second cause was look-ahead: dividing by
+a full-sample sum, which the automated test rejected (7 and 3 failed rounds;
+19 and 10 rejected attempts when repairs are counted).
+Two larger local models could not be tested on a 16 GB laptop: one
+ran it out of memory, one did not load in the installed Ollama version.
+Details: [results/pilot/STATUS.md](results/pilot/STATUS.md).
+
 
 ## Setup and usage
 
 ```bash
 uv sync
 uv run pytest -q
-uv run python -m overfitlab all          # every experiment, about 12 minutes
+uv run python -m overfitlab all          # every experiment, from stored model replies
 uv run python -m overfitlab all --quick  # small check run, writes to results/quick
+uv run python -m overfitlab agent        # only the agent experiment, from stored replies
 ```
+
+`all` makes no model call. The one command that does is
+`uv run --env-file .env python -m overfitlab generate`, which needs
+`ANTHROPIC_API_KEY` in a git-ignored `.env` file, skips every reply that is
+already stored and stops before the spending cap.
 
 All randomness derives from one master seed (`20261116` in
 `src/overfitlab/config.py`).

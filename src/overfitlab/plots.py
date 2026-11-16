@@ -118,34 +118,67 @@ def fdr_power_figure(curves: pd.DataFrame, points: pd.DataFrame, path: Path) -> 
     plt.close(fig)
 
 
-def variant_figure(points: pd.DataFrame, path: Path) -> None:
-    """Each filter at its conventional cut: plain worlds against harder ones.
+_SERIES = (("#2a78d6", "o"), ("#eb6834", "s"), ("#1baf7a", "D"))
+# Each panel: (title, [(group of worlds, legend label), ...]), first = baseline.
+VARIANT_PANELS = [
+    (
+        "No signal",
+        [("no_signal", "Plain world"), ("no_signal_regimes", "Regime switching")],
+    ),
+    (
+        "Medium signal",
+        [
+            ("all_medium", "Plain world"),
+            ("all_medium_regimes", "Regime switching"),
+            ("all_medium_regimes_matched", "Same, signal rescaled"),
+        ],
+    ),
+    (
+        "Obvious signal",
+        [("all_obvious", "Plain world"), ("all_obvious_decay", "Alpha decay")],
+    ),
+]
+VARIANT_TITLE = (
+    "Filters at their conventional cut: plain worlds against regime "
+    "switching and alpha decay (bars = 95% interval)"
+)
+AGENT_PANELS = [
+    (
+        "No signal",
+        [("grid_no_signal", "Grid search"), ("agent_no_signal", "LLM agent")],
+    ),
+    (
+        "Medium signal",
+        [("grid_all_medium", "Grid search"), ("agent_all_medium", "LLM agent")],
+    ),
+]
+AGENT_TITLE = (
+    "Filters at their conventional cut: grid search (76 strategies, 200 worlds "
+    "per type) against the LLM agent (20 rounds, 30 worlds per type)"
+)
 
-    Columns: no signal and medium signal with regime switching, obvious signal
-    with alpha decay. Top row FDR, bottom row power, bars are 95% intervals.
-    The medium panel has a third series: regime switching with the signal
-    rescaled so the planted rule earns the same Sharpe as in the plain world.
+
+def comparison_figure(
+    points: pd.DataFrame, path: Path, panels: list, title: str
+) -> None:
+    """Each filter at its conventional cut, one column of panels per setting.
+
+    Top row FDR, bottom row power, bars are 95% intervals. Within a panel the
+    first series is the baseline and the others are what it is compared with.
     """
-    regimes, matched = "all_medium_regimes", "all_medium_regimes_matched"
-    panels = [
-        ("No signal", "no_signal", "no_signal_regimes", "Regime switching", None),
-        ("Medium signal", "all_medium", regimes, "Regime switching", matched),
-        ("Obvious signal", "all_obvious", "all_obvious_decay", "Alpha decay", None),
-    ]
     names = list(STYLE)
     height = np.arange(len(names))[::-1]
-    fig, axes = plt.subplots(2, 3, figsize=(13, 7.6), sharey=True)
+    width = 4.3 * len(panels) + 0.1
+    fig, axes = plt.subplots(2, len(panels), figsize=(width, 7.6), sharey=True)
     fig.set_facecolor(SURFACE)
-    for column, (title, plain, harder, label, matched) in enumerate(panels):
+    for column, (panel_title, groups) in enumerate(panels):
+        plain = groups[0][0]
+        shifts = np.linspace(0.2, -0.2, len(groups))
         for row, measure in enumerate(("fdr", "power")):
             ax = axes[row, column]
-            series = [
-                (plain, "Plain world", "#2a78d6", "o", 0.2),
-                (harder, label, "#eb6834", "s", 0.0 if matched else -0.2),
-            ]
-            if matched:
-                series.append((matched, "Same, signal rescaled", "#1baf7a", "D", -0.2))
-            for group, tag, colour, marker, shift in series:
+            for (group, tag), (colour, marker), shift in zip(
+                groups, _SERIES, shifts, strict=False
+            ):
                 rows = points[points.worlds == group].set_index("filter").loc[names]
                 low = rows[measure] - rows[f"{measure}_low"]
                 high = rows[f"{measure}_high"] - rows[measure]
@@ -162,7 +195,7 @@ def variant_figure(points: pd.DataFrame, path: Path) -> None:
                     label=tag,
                 )
             if row == 0:
-                ax.set_title(title, fontsize=10, color=INK, pad=26)
+                ax.set_title(panel_title, fontsize=10, color=INK, pad=26)
                 ax.legend(
                     frameon=False,
                     fontsize=9,
@@ -191,12 +224,7 @@ def variant_figure(points: pd.DataFrame, path: Path) -> None:
             ax.tick_params(colors=MUTED, length=0)
             for side in ax.spines.values():
                 side.set_visible(False)
-    fig.suptitle(
-        "Filters at their conventional cut: plain worlds against regime "
-        "switching and alpha decay (bars = 95% interval)",
-        fontsize=11,
-        color=INK,
-    )
+    fig.suptitle(title, fontsize=11, color=INK)
     fig.tight_layout()
     path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(path, dpi=160, bbox_inches="tight")

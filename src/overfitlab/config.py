@@ -151,3 +151,8 @@ LLM_MAX_TOKENS = 600  # per reply
 API_MODEL = "claude-haiku-5-5"
 API_PRICE_PER_MTOK = {"claude-haiku-5-5": (0.10, 0.50)}  # dollars: input, output
 API_BUDGET_USD = 2.00  # hard cap on all API calls together
+# Experiment 1 with the agent: the no-signal world and the three medium
+# signals, on the same first 30 worlds of each type that the grid search saw.
+AGENT_PROVIDER = "anthropic"  # bulk runs; the local models failed the pilot
+AGENT_WORLDS = ("no_signal", "tsmom_medium", "xsmom_medium", "meanrev_medium")
+AGENT_SEEDS = 30

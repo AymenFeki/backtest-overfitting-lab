@@ -128,6 +128,27 @@ def check_code(source: str) -> str | None:
     return None
 
 
+def _launch(work: Path, timeout: float) -> str:
+    """Run the strategy file in `work` in its own process; return the status."""
+    command = [sys.executable, "-m", "overfitlab.sandbox", str(work)]
+    try:
+        done = subprocess.run(
+            command,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            cwd=work,
+            env={},  # the strategy process sees no API key or other secret
+        )
+    except subprocess.TimeoutExpired:
+        return f"too slow: no result within {timeout:.0f} seconds"
+    try:
+        return json.loads(done.stdout.strip().splitlines()[-1])["status"]
+    except (IndexError, ValueError, KeyError):
+        return "error: the process crashed"
+
+
 def run_strategy(
     source: str, prices: pd.DataFrame, timeout: float = TIMEOUT_SECONDS
 ) -> tuple[pd.DataFrame | None, str]:
@@ -139,27 +160,31 @@ def run_strategy(
         work = Path(folder)
         (work / "strategy.py").write_text(source)
         np.save(work / "prices.npy", prices.to_numpy())
-        command = [sys.executable, "-m", "overfitlab.sandbox", str(work)]
-        try:
-            done = subprocess.run(
-                command,
-                check=False,
-                capture_output=True,
-                text=True,
-                timeout=timeout,
-                cwd=work,
-                env={},  # the strategy process sees no API key or other secret
-            )
-        except subprocess.TimeoutExpired:
-            return None, f"too slow: no result within {timeout:.0f} seconds"
-        try:
-            status = json.loads(done.stdout.strip().splitlines()[-1])["status"]
-        except (IndexError, ValueError, KeyError):
-            return None, "error: the process crashed"
+        status = _launch(work, timeout)
         if status != "ok":
             return None, status
         weights = np.load(work / "weights.npy", allow_pickle=False)
     return pd.DataFrame(weights, index=prices.index, columns=prices.columns), "ok"
+
+
+def run_on_paths(
+    sources: list[str], prices: np.ndarray, timeout: float = 600.0
+) -> list[np.ndarray | None]:
+    """Weights of several accepted strategies on several price paths.
+
+    `prices` has shape (paths, days, assets). Used to measure a strategy's
+    true Sharpe on fresh data, so the look-ahead test is not repeated. One
+    process per strategy; a strategy that fails here gives None.
+    """
+    out: list[np.ndarray | None] = []
+    with tempfile.TemporaryDirectory() as folder:
+        work = Path(folder)
+        np.save(work / "prices.npy", prices)
+        for source in sources:
+            (work / "strategy.py").write_text(source)
+            usable = check_code(source) is None and _launch(work, timeout) == "ok"
+            out.append(np.load(work / "weights.npy") if usable else None)
+    return out
 
 
 def _safe_import(name: str, *args: object, **kwargs: object) -> object:
@@ -181,8 +206,7 @@ def _load(source: str) -> object:
 
 def _child(work: Path) -> str:
     """Runs inside the separate process. Returns the status."""
-    prices = pd.DataFrame(np.load(work / "prices.npy"))
-    prices.columns = [f"A{i}" for i in range(prices.shape[1])]
+    prices = np.load(work / "prices.npy")
     try:
         function = _load((work / "strategy.py").read_text())
 
@@ -194,16 +218,24 @@ def _child(work: Path) -> str:
                 )
             return pd.DataFrame(np.nan_to_num(weights, nan=0.0))
 
-        weights = positions(prices).to_numpy()
+        def table(path: np.ndarray) -> pd.DataFrame:
+            return pd.DataFrame(path, columns=[f"A{i}" for i in range(path.shape[1])])
+
+        if prices.ndim == 3:  # many paths: weights only, see run_on_paths
+            weights = np.stack([positions(table(path)).to_numpy() for path in prices])
+        else:
+            weights = positions(table(prices)).to_numpy()
+            if not weights.any():
+                return "error: all weights are zero, the strategy never trades"
+            if np.isfinite(weights).all() and not passes_lookahead_test(
+                positions, table(prices)
+            ):
+                return (
+                    "look-ahead: weights for a day change when later prices change "
+                    "(or the function is random)"
+                )
         if not np.isfinite(weights).all():
             return "error: weights contain infinite values"
-        if not weights.any():
-            return "error: all weights are zero, the strategy never trades"
-        if not passes_lookahead_test(positions, prices):
-            return (
-                "look-ahead: weights for a day change when later prices change "
-                "(or the function is random)"
-            )
     except Exception as error:  # noqa: BLE001  any failure is reported to the agent
         return f"error: {type(error).__name__}: {str(error)[:300]}"
     np.save(work / "weights.npy", weights)

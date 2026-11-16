@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 
 from overfitlab import config as cfg
-from overfitlab.sandbox import check_code, run_strategy
+from overfitlab.sandbox import check_code, run_on_paths, run_strategy
 from overfitlab.worlds import world
 
 GOOD = """
@@ -70,3 +70,12 @@ def test_an_array_of_the_right_shape_is_accepted_and_nothing_else_is_fixed(price
     assert np.allclose(weights, np.sign(prices.pct_change(20)).fillna(0.0))
     one_column = "def positions(prices):\n    return prices.pct_change(20).mean(axis=1)"
     assert "shape" in run_strategy(one_column, prices)[1]
+
+
+def test_strategies_run_on_many_paths_and_a_failing_one_gives_none(prices):
+    paths = np.stack([prices.to_numpy(), prices.to_numpy()[::-1]])
+    crash = "def positions(prices):\n    return prices.no_such_method()"
+    good, bad = run_on_paths([GOOD, crash], paths)
+    assert bad is None and good.shape == paths.shape
+    direct, _ = run_strategy(GOOD, prices)
+    assert np.allclose(good[0], direct)

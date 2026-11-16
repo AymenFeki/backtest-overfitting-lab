@@ -164,7 +164,7 @@ def _anthropic(model: Model, system: str, messages: list[dict], seed: int) -> Re
     import anthropic  # imported here so the local-model path does not need it
 
     start = time.time()
-    answer = anthropic.Anthropic().messages.create(
+    answer = anthropic.Anthropic(max_retries=5).messages.create(
         model=model.name,
         max_tokens=cfg.LLM_MAX_TOKENS,
         system=system,

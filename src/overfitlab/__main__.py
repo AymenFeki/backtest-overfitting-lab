@@ -10,10 +10,19 @@ import pandas as pd
 
 from . import config as cfg
 from .agent import run_agent
+from .agent_experiment import agent_truth, generate, score_runs, summarise_agent
 from .backtest import net_returns, sharpe
 from .experiments import grid_scores, summarise, true_sharpes
 from .llm import Model
-from .plots import LABEL, fdr_power_figure, variant_figure
+from .plots import (
+    AGENT_PANELS,
+    AGENT_TITLE,
+    LABEL,
+    VARIANT_PANELS,
+    VARIANT_TITLE,
+    comparison_figure,
+    fdr_power_figure,
+)
 from .registry import GAP_FILTERS
 from .strategies import oracle
 from .worlds import draw_shocks, simulate, to_prices, world
@@ -41,11 +50,26 @@ TABLES = {
 }
 
 
-def markdown_tables(points: pd.DataFrame) -> str:
+AGENT_TABLES = {
+    "Grid search against the LLM agent": {
+        "No signal, grid": "grid_no_signal",
+        "No signal, agent": "agent_no_signal",
+        "Medium, grid": "grid_all_medium",
+        "Medium, agent": "agent_all_medium",
+    },
+    "LLM agent by signal type": {
+        "Momentum": "agent_tsmom_medium",
+        "Cross-sectional": "agent_xsmom_medium",
+        "Mean reversion": "agent_meanrev_medium",
+    },
+}
+
+
+def markdown_tables(points: pd.DataFrame, tables: dict = TABLES) -> str:
     """Each filter at its conventional cut: FDR / pFDR / power in percent."""
     points = points.set_index(["worlds", "filter"])
     lines = ["Cells are FDR / pFDR / power in percent; `-` means undefined.", ""]
-    for title, columns in TABLES.items():
+    for title, columns in tables.items():
         lines += [f"## {title}", "", "| Filter | " + " | ".join(columns) + " |"]
         lines.append("|---" * (len(columns) + 1) + "|")
         for name, label in LABEL.items():
@@ -86,7 +110,8 @@ def run_all(quick: bool, jobs: int) -> None:
     curves.to_csv(out / "exp1_grid_curves.csv", index=False, float_format="%.4f")
     main_points = points[points.true_threshold == cfg.TRUE_SHARPE_MIN]
     fdr_power_figure(curves, main_points, out / "figures" / "exp1_grid_fdr_power.png")
-    variant_figure(main_points, out / "figures" / "exp1_grid_regimes_decay.png")
+    figure = out / "figures" / "exp1_grid_regimes_decay.png"
+    comparison_figure(main_points, figure, VARIANT_PANELS, VARIANT_TITLE)
     (out / "exp1_grid_tables.md").write_text(markdown_tables(main_points))
 
     # CPCV with wider gaps around the test groups, on the first 50 worlds.
@@ -94,6 +119,55 @@ def run_all(quick: bool, jobs: int) -> None:
     gaps = summarise(gap_scores, truth, cfg.TRUE_SHARPE_MIN, False, GAP_FILTERS)
     gaps.to_csv(out / "exp1_cpcv_gap.csv", index=False, float_format="%.4f")
     print(f"results written to {out}/")
+    run_agent_experiment(quick, jobs)
+
+
+def run_agent_experiment(quick: bool, jobs: int) -> None:
+    """Experiment 1 with the LLM agent, from stored replies (no model call)."""
+    out = Path("results/quick" if quick else "results")
+    model = Model(cfg.AGENT_PROVIDER, cfg.API_MODEL)
+    n_seeds = 2 if quick else cfg.AGENT_SEEDS
+
+    start = time.time()
+    runs = score_runs(model, n_seeds, jobs)
+    print(f"agent: {len(runs)} runs replayed and scored, {time.time() - start:.0f}s")
+    start = time.time()
+    truth = agent_truth(runs, 10 if quick else cfg.TRUTH_PATHS, jobs)
+    truth.to_csv(out / "exp1_agent_truth.csv", index=False, float_format="%.4f")
+    print(f"agent truth: {len(truth)} strategies, {time.time() - start:.0f}s")
+
+    per_run = pd.DataFrame(
+        {
+            "world_type": cfg.SPECS[run["spec"]].name,
+            "world": run["world"],
+            "usable": len(run["rounds"]),
+            "attempts": run["attempts"],
+            "lookahead_rejections": run["lookahead"],
+            "distinct": run["distinct"],
+            "seconds": run["seconds"],
+            "cost_usd": run["cost"],
+        }
+        for run in runs
+    )
+    per_run.to_csv(out / "exp1_agent_runs.csv", index=False, float_format="%.4f")
+    points = pd.concat(
+        summarise_agent(runs, truth, threshold) for threshold in cfg.TRUTH_THRESHOLDS
+    )
+    points.to_csv(out / "exp1_agent_points.csv", index=False, float_format="%.4f")
+
+    # Side by side with the grid search on the same world types.
+    grid = pd.read_csv(out / "exp1_grid_points.csv")
+    both = pd.concat(
+        [
+            grid.assign(worlds="grid_" + grid.worlds),
+            points.assign(worlds="agent_" + points.worlds),
+        ]
+    )
+    both = both[both.true_threshold == cfg.TRUE_SHARPE_MIN]
+    (out / "exp1_agent_tables.md").write_text(markdown_tables(both, AGENT_TABLES))
+    figure = out / "figures" / "exp1_agent_vs_grid.png"
+    comparison_figure(both, figure, AGENT_PANELS, AGENT_TITLE)
+    print(f"agent results written to {out}/")
 
 
 def calibrate(n_paths: int = 50) -> None:
@@ -201,7 +275,9 @@ def pilot(model: Model, live: bool, history: str) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(prog="overfitlab")
-    parser.add_argument("command", choices=["all", "calibrate", "pilot"])
+    parser.add_argument(
+        "command", choices=["all", "calibrate", "pilot", "generate", "agent"]
+    )
     parser.add_argument("--quick", action="store_true", help="small run for a check")
     parser.add_argument("--jobs", type=int, default=max(1, (os.cpu_count() or 2) - 2))
     parser.add_argument("--provider", default="ollama", help="ollama or anthropic")
@@ -215,6 +291,10 @@ def main() -> None:
         run_all(args.quick, args.jobs)
     elif args.command == "calibrate":
         calibrate()
+    elif args.command == "generate":  # the only command that calls the API
+        generate(Model(cfg.AGENT_PROVIDER, cfg.API_MODEL))
+    elif args.command == "agent":
+        run_agent_experiment(args.quick, args.jobs)
     else:
         default = cfg.LOCAL_MODEL if args.provider == "ollama" else cfg.API_MODEL
         pilot(Model(args.provider, args.model or default), args.live, args.history)
