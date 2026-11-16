@@ -148,6 +148,7 @@ def run_strategy(
                 text=True,
                 timeout=timeout,
                 cwd=work,
+                env={},  # the strategy process sees no API key or other secret
             )
         except subprocess.TimeoutExpired:
             return None, f"too slow: no result within {timeout:.0f} seconds"

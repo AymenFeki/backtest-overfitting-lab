@@ -29,22 +29,46 @@ repair attempts per round. The gate is about 80% usable rounds.
 - Removed from disk with approval: qwen2.5-coder:14b, rnj-1:8b. Still
   installed: qwen2.5-coder:7b, mimo-v2.6:9b-q4_K_M.
 
-## Haiku 5.5: pilot not run yet
+## Claude Haiku 5.5: passes
 
-It needs `ANTHROPIC_API_KEY` in the environment of the shell that runs it.
-No API call has been made and nothing has been spent.
+Same pilot (2 worlds x 20 rounds), thinking switched off, key loaded with
+`uv run --env-file .env`.
+
+| Measure | Result |
+|---|---|
+| Usable rounds | 40 of 40 (100%), all at the first attempt |
+| Look-ahead rejections | 0 |
+| Distinct strategies | 38 of 40 |
+| Seconds per round, including the backtest | 2.7 |
+| Tokens per round | about 1,320 in, 390 out |
+| Cost | $0.0144 for the two runs ($0.0072 per run, $0.00036 per round) |
+
+Research-sample Sharpe of its strategies: median 0.11 and best 0.55 on the
+no-signal world, median 0.60 and best 1.02 on the momentum world. Its
+hypotheses refer to earlier rounds by number and result, so it does adapt.
+
+Estimates from these measured rates, for the plan's tentative sizes:
+
+| Runs | Rounds | Cost | Model time |
+|---|---|---|---|
+| Stage 4, experiment 1: 4 world types x 15 seeds x 20 rounds | 1,200 | about $0.43 | about 55 minutes |
+| Stage 5, experiment 2: 2 arms x 15 seeds x 40 rounds | 1,200 | about $0.49 (longer tables) | about 55 minutes |
+| Stage 5, experiment 3: 2 arms x 15 seeds x 20 rounds | 600 | about $0.23 | about 27 minutes |
+| All three | 3,000 | about $1.15 | about 2.3 hours |
+
+Spent so far: $0.0144 of the $2.00 cap. At the measured rate the rest pays
+for about 275 runs of 20 rounds; Stage 4 needs 60. If every round needed all
+three attempts with replies at the 600-token limit, Stage 4 would cost about
+$1.80, still under the cap, which the code enforces before each call.
+
+Not included: computing the true Sharpe of each agent strategy on fresh
+simulated paths. That is local CPU time, not API cost, and is not measured yet.
+
+To repeat the pilot without any API call (stored replies):
 
 ```bash
-read -s "ANTHROPIC_API_KEY?Anthropic API key (hidden, press Enter): " && export ANTHROPIC_API_KEY
+uv run python -m overfitlab pilot --provider anthropic
 ```
-
-```bash
-uv run python -m overfitlab pilot --provider anthropic --live
-```
-
-The code refuses any call that could take the total past $2.00. The result
-lands in `results/pilot/claude-haiku-5-5__compact.csv` and the replies in
-`cache/llm/`.
 
 ## Files
 
