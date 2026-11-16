@@ -1,6 +1,6 @@
 # Backtest Overfitting Lab
 
-**Work in progress: Stage 1 of 6 is done.** This README is a placeholder; the
+**Work in progress: Stage 2 of 6 is done.** This README is a placeholder; the
 full write-up comes with the last stage.
 
 **Question:** when many trading strategies are backtested on the same data,
@@ -14,9 +14,10 @@ are measured over hundreds of simulated worlds.
 
 ## Results so far
 
-Stage 1: brute-force grid search against a naive Sharpe threshold, a single
-holdout and walk-forward. Details and table in
-[results/stage1.md](results/stage1.md).
+Brute-force grid search of 76 strategies against seven filters: naive Sharpe
+threshold, single holdout, walk-forward, deflated Sharpe ratio, combinatorial
+purged cross-validation, Benjamini-Hochberg and Romano-Wolf. Notes with tables:
+[Stage 1](results/stage1.md), [Stage 2](results/stage2.md).
 
 ![FDR against power](results/figures/exp1_grid_fdr_power.png)
 
@@ -25,7 +26,7 @@ holdout and walk-forward. Details and table in
 ```bash
 uv sync
 uv run pytest -q
-uv run python -m overfitlab all          # every experiment, about 5 minutes
+uv run python -m overfitlab all          # every experiment, about 6 minutes
 uv run python -m overfitlab all --quick  # small check run, writes to results/quick
 ```
 
@@ -37,5 +38,5 @@ All randomness derives from one master seed (`20261116` in
 - **Simulated markets.** They have fat tails, volatility clustering and
   correlated assets, but are far simpler than real markets.
 - **Daily data only.**
-- **Not finished.** Deflated Sharpe, CPCV, multiple-testing control, PBO, the
-  LLM agent and Thresholdout are still to come.
+- **Not finished.** PBO, regime switching, the LLM agent and Thresholdout are
+  still to come.

@@ -15,8 +15,20 @@ STYLE = {
     "naive": ("#2a78d6", "o"),
     "holdout": ("#eb6834", "s"),
     "walk_forward": ("#1baf7a", "^"),
+    "dsr": ("#eda100", "D"),
+    "cpcv": ("#e87ba4", "v"),
+    "bh": ("#008300", "P"),
+    "romano_wolf": ("#6250d6", "X"),
 }
-LABEL = {"naive": "Naive Sharpe", "holdout": "Holdout", "walk_forward": "Walk-forward"}
+LABEL = {
+    "naive": "Naive Sharpe",
+    "holdout": "Holdout",
+    "walk_forward": "Walk-forward",
+    "dsr": "Deflated Sharpe",
+    "cpcv": "CPCV",
+    "bh": "Benjamini-Hochberg",
+    "romano_wolf": "Romano-Wolf",
+}
 INK, MUTED, GRID, SURFACE = "#0b0b0b", "#898781", "#e1e0d9", "#fcfcfb"
 
 

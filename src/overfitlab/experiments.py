@@ -14,8 +14,8 @@ import pandas as pd
 
 from . import config as cfg
 from .backtest import net_returns, run_all, sharpe
-from .filters import FILTERS
 from .metrics import fdp_and_power, mean_ci
+from .registry import FILTERS
 from .strategies import grid, oracle
 from .worlds import draw_shocks, simulate, to_prices, world
 
@@ -133,7 +133,7 @@ def summarise(
             for cut in flt.sweep if sweep else [flt.cut]:
                 fdp, power, n_accepted = [], [], []
                 for s in spec_indices:
-                    accepted = scores[s, :, f_index, :] >= cut
+                    accepted = scores[s, :, f_index, :] > cut
                     world_fdp, world_power = fdp_and_power(accepted, is_true[s])
                     fdp.append(world_fdp)
                     power.append(world_power)

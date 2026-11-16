@@ -6,7 +6,7 @@ import numpy as np
 
 # --- reproducibility -------------------------------------------------------
 MASTER_SEED = 20261116
-_STREAMS = {"world": 0, "truth": 1, "bootstrap": 2, "calibrate": 3}
+_STREAMS = {"world": 0, "truth": 1, "bootstrap": 2, "calibrate": 3, "romano_wolf": 4}
 
 
 def seed(stream: str, *key: int) -> np.random.SeedSequence:
@@ -72,3 +72,5 @@ TRUTH_THRESHOLDS = (0.0, 0.2, 0.5)  # sensitivity check
 TRUTH_PATHS, TRUTH_YEARS = 100, 100  # 10,000 simulated years per world type
 N_WORLDS = 200
 N_BOOTSTRAP = 2000
+RW_RESAMPLES = 1000  # Romano-Wolf bootstrap resamples
+RW_BLOCK = 20  # block length in days, about one half-life of a volatility shock

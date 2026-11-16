@@ -2,8 +2,8 @@ import numpy as np
 
 from overfitlab import config as cfg
 from overfitlab import experiments
-from overfitlab.filters import FILTERS
 from overfitlab.metrics import fdp_and_power, mean_ci
+from overfitlab.registry import FILTERS
 
 
 def test_fdp_and_power_hand_example():

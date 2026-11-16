@@ -2,15 +2,12 @@
 
 Every filter takes the same input, a table of net daily returns (days x
 strategies) for one world, and gives each strategy a score. A strategy is
-accepted when its score reaches the filter's cut. Sweeping the cut traces the
-filter's FDR-versus-power curve.
+accepted when its score exceeds the filter's cut (see registry.py). Sweeping
+the cut traces the filter's FDR-versus-power curve.
 
 None of these three corrects for how many strategies were tried. That is the
 point of the baseline: the later filters are measured against them.
 """
-
-from collections.abc import Callable
-from dataclasses import dataclass
 
 import numpy as np
 import pandas as pd
@@ -77,19 +74,3 @@ def walk_forward(
     for start in range(n_initial_blocks * block, len(r), block):
         traded[start : start + block] = sharpe(r[:start]) >= screen
     return confidence(r, traded)
-
-
-@dataclass(frozen=True)
-class Filter:
-    name: str
-    score: Callable[[pd.DataFrame], np.ndarray]
-    cut: float  # conventional setting: accept if score >= cut
-    sweep: np.ndarray  # cuts used to trace the FDR-versus-power curve
-
-
-_P_VALUES = np.array([0.5, 0.3, 0.2, 0.1, 0.05, 0.025, 0.01, 0.005, 0.001, 0.0001])
-FILTERS = [
-    Filter("naive", naive_sharpe, cfg.SCREEN_SHARPE, np.linspace(0, 3, 31)),
-    Filter("holdout", holdout, 0.95, 1 - _P_VALUES),
-    Filter("walk_forward", walk_forward, 0.95, 1 - _P_VALUES),
-]
