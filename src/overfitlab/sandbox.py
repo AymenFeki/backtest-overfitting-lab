@@ -9,7 +9,9 @@ Two layers:
    limit, so a crash or an endless loop cannot take the experiment down.
 
 In that process the strategy must also pass the look-ahead test before its
-weights are handed back. This guards against accidents. It is not a hardened
+weights are handed back. One automatic repair is made and no other: a NumPy
+array of exactly the prices' shape is accepted and given the prices' index
+and columns (missing weights count as zero, as in the engine). This guards against accidents. It is not a hardened
 security boundary: do not use it for code from an untrusted person.
 """
 

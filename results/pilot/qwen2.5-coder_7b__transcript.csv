@@ -1,0 +1,41 @@
+world,round,status,attempts,research_sharpe,input_tokens,output_tokens,seconds,cost_usd
+no_signal,1,error,3,,958,577,33.404540874999995,0.0
+no_signal,2,error,3,,1639,491,26.967774959,0.0
+no_signal,3,error,3,,2463,710,39.268754083000005,0.0
+no_signal,4,error,3,,3220,535,35.258279708,0.0
+no_signal,5,error,3,,3940,580,51.07240025,0.0
+no_signal,6,look-ahead,3,,4637,534,49.056610166,0.0
+no_signal,7,look-ahead,3,,5306,534,48.379119249999995,0.0
+no_signal,8,look-ahead,3,,5975,534,47.104758249,0.0
+no_signal,9,look-ahead,3,,6644,534,46.443166459,0.0
+no_signal,10,look-ahead,3,,7314,534,49.459417167,0.0
+no_signal,11,look-ahead,3,,7985,534,50.844387584,0.0
+no_signal,12,look-ahead,3,,8656,534,40.631600167,0.0
+no_signal,13,look-ahead,3,,9327,534,39.585493707,0.0
+no_signal,14,look-ahead,3,,9998,534,39.772725917,0.0
+no_signal,15,look-ahead,3,,10669,534,40.299375667,0.0
+no_signal,16,look-ahead,3,,11340,534,41.269217624,0.0
+no_signal,17,look-ahead,3,,12011,534,41.847158834,0.0
+no_signal,18,look-ahead,3,,12682,534,41.667412376,0.0
+no_signal,19,look-ahead,3,,13353,534,42.089976542,0.0
+no_signal,20,look-ahead,3,,14024,534,42.833246042,0.0
+tsmom_medium,1,ok,1,-0.11890925019163669,471,132,8.8401665,0.0
+tsmom_medium,2,ok,1,-0.4518236939577665,672,91,6.370316583,0.0
+tsmom_medium,3,ok,1,-0.4434721384217581,832,119,8.091209084,0.0
+tsmom_medium,4,error,3,,1338,345,23.356783375,0.0
+tsmom_medium,5,identical to round 3,3,,1803,342,23.862615083,0.0
+tsmom_medium,6,identical to round 1,3,,2293,362,25.673728291,0.0
+tsmom_medium,7,error,3,,2748,325,23.390711958,0.0
+tsmom_medium,8,identical to round 3,3,,3213,342,23.647459708,0.0
+tsmom_medium,9,identical to round 2,3,,3706,338,23.443584041999998,0.0
+tsmom_medium,10,identical to round 1,3,,4159,366,25.175912584,0.0
+tsmom_medium,11,error,3,,4616,325,22.272834875,0.0
+tsmom_medium,12,identical to round 3,3,,5083,342,23.787873374,0.0
+tsmom_medium,13,identical to round 2,3,,5578,338,24.042769042,0.0
+tsmom_medium,14,identical to round 1,3,,6032,366,26.006178292999998,0.0
+tsmom_medium,15,error,3,,6489,325,23.091047084000003,0.0
+tsmom_medium,16,identical to round 3,3,,6956,342,24.837876251,0.0
+tsmom_medium,17,identical to round 2,3,,7451,338,24.751420082000003,0.0
+tsmom_medium,18,identical to round 1,3,,7905,366,31.431670458,0.0
+tsmom_medium,19,error,3,,8362,325,27.929870375,0.0
+tsmom_medium,20,identical to round 3,3,,8829,342,30.807537458,0.0

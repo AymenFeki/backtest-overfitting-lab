@@ -79,6 +79,30 @@ an effective number of independent trials accepts nothing on noise and finds
 
 ![FDR against power](results/figures/exp1_grid_fdr_power.png)
 
+## The LLM agent (Stage 4, in progress)
+
+A language model plays the researcher: each round it writes a hypothesis and
+a `positions(prices)` function, the function is checked, run in a sandbox with
+the look-ahead test, backtested by the same engine as the grid, and the model
+is told the result on the research sample.
+
+- **What the agent remembers.** By default every round is a fresh prompt with
+  a table of all its past rounds (hypothesis, status, research-sample Sharpe)
+  and the error of the last round if it failed. It sees every result it ever
+  got, so it stays adaptive. The first version kept one growing conversation
+  with all earlier code instead; a small local model then copied its own
+  mistakes round after round and the prompt reached 14,000 tokens in 20
+  rounds (1,800 with the table). The old mode is still there:
+  `--history transcript`. The price of the table: the agent no longer sees its
+  earlier code, only what each idea was and how it scored.
+- **Repairs.** If a round's code cannot be used (error, look-ahead, a repeat),
+  the model gets the reason and up to two more attempts. Only the final
+  version is a trial. Failed code was never backtested, so it told the model
+  nothing about the data and does not count as a trial for the corrections.
+- **Reproducibility.** Every model reply is stored under a hash of the full
+  request (`cache/llm/`), and experiments are re-scored from those files
+  without calling a model.
+
 ## Setup and usage
 
 ```bash

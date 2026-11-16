@@ -58,3 +58,15 @@ def test_errors_wrong_shape_flat_and_slow_code_are_reported(prices):
     assert "never trades" in run_strategy(flat, prices)[1]
     slow = "def positions(prices):\n    while True:\n        pass"
     assert run_strategy(slow, prices, timeout=2)[1].startswith("too slow")
+
+
+def test_an_array_of_the_right_shape_is_accepted_and_nothing_else_is_fixed(prices):
+    array = (
+        "def positions(prices):\n    return np.sign(prices.pct_change(20)).to_numpy()"
+    )
+    weights, status = run_strategy(array, prices)
+    assert status == "ok"
+    assert weights.index.equals(prices.index) and list(weights.columns) == list(prices)
+    assert np.allclose(weights, np.sign(prices.pct_change(20)).fillna(0.0))
+    one_column = "def positions(prices):\n    return prices.pct_change(20).mean(axis=1)"
+    assert "shape" in run_strategy(one_column, prices)[1]

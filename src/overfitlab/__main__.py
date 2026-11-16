@@ -127,20 +127,30 @@ def calibrate(n_paths: int = 50) -> None:
             print(f'"{signal}": {table},')
 
 
-PILOT_WORLDS = ["no_signal", "tsmom_medium", "meanrev_medium"]
+PILOT_WORLDS = ["no_signal", "tsmom_medium"]
 
 
-def pilot(model: Model, live: bool) -> None:
-    """A small agent run to choose a model: one world of three types, 20 rounds.
+def pilot(model: Model, live: bool, history: str) -> None:
+    """A small agent run to choose a model: one world of two types, 20 rounds.
 
     Writes one row per round to results/pilot/ and prints the share of usable
-    proposals and the speed. Replies are stored, so a second run is instant.
+    rounds, look-ahead rejections, distinct strategies and the speed. Replies
+    are stored, so a second run makes no model call.
     """
-    rows = []
+    rows, distinct, wall = [], 0, []
     for name in PILOT_WORLDS:
         spec_index = [s.name for s in cfg.SPECS].index(name)
         prices = world(cfg.SPECS[spec_index], 0)
-        for trial in run_agent(prices, model, seed=spec_index * 1000, live=live):
+        start = time.time()
+        trials = run_agent(
+            prices, model, seed=spec_index * 1000, live=live, history=history
+        )
+        wall.append((time.time() - start) / len(trials))
+        usable = pd.DataFrame({t.round: t.returns for t in trials if t.status == "ok"})
+        # Distinct: not a near copy (correlation above 0.99) of an earlier round.
+        copies = np.triu(usable.corr().abs().to_numpy(), k=1) > 0.99
+        distinct += int((~copies.any(axis=0)).sum())
+        for trial in trials:
             research = None
             if trial.returns is not None:
                 research = float(sharpe(trial.returns.iloc[: cfg.N_RESEARCH]))
@@ -149,30 +159,43 @@ def pilot(model: Model, live: bool) -> None:
                     "world": name,
                     "round": trial.round,
                     "status": trial.status.split(":")[0],
+                    "attempts": len(trial.replies),
+                    "lookahead_rejections": sum(
+                        f.startswith("look-ahead") for f in trial.failures
+                    ),
                     "research_sharpe": research,
-                    "input_tokens": trial.reply.input_tokens,
-                    "output_tokens": trial.reply.output_tokens,
-                    "seconds": trial.reply.seconds,
-                    "cost_usd": trial.reply.cost_usd,
-                    "stop": trial.reply.stop,
+                    "input_tokens": max(r.input_tokens for r in trial.replies),
+                    "output_tokens": sum(r.output_tokens for r in trial.replies),
+                    "seconds": sum(r.seconds for r in trial.replies),
+                    "cost_usd": sum(r.cost_usd for r in trial.replies),
                 }
             )
             print(rows[-1], flush=True)
     table = pd.DataFrame(rows)
     out = Path("results/pilot")
     out.mkdir(parents=True, exist_ok=True)
-    table.to_csv(out / f"{model.name.replace(':', '_')}.csv", index=False)
+    table.to_csv(out / f"{model.name.replace(':', '_')}__{history}.csv", index=False)
     usable = table.status == "ok"
-    print(f"\n{model.name}: {usable.mean():.0%} of {len(table)} proposals usable")
+    print(f"\n{model.name}, {history} history")
+    print(f"usable rounds: {usable.mean():.0%} of {len(table)}")
+    print(f"usable at the first attempt: {(usable & (table.attempts == 1)).mean():.0%}")
+    print(f"attempts per round: {table.attempts.mean():.2f}")
+    print(f"look-ahead rejections: {table.lookahead_rejections.sum()}")
+    print(f"distinct strategies: {distinct}")
     print(table.status.value_counts().to_string())
-    third = len(table) // 3
-    for label, part in (("first", table[:third]), ("last", table[-third:])):
+    half = len(table) // 2
+    parts = (("first", table[:half]), ("second", table[half:]))
+    for (label, part), seconds in zip(parts, wall, strict=True):
         speed = part.output_tokens.sum() / part.seconds.sum()
         print(
-            f"{label} third: {part.seconds.mean():.1f} s per round, "
+            f"{label} world: {seconds:.1f} s per round including backtests, "
             f"{speed:.1f} tokens per second"
         )
     print(f"largest prompt: {table.input_tokens.max()} tokens")
+    print(
+        f"tokens per round: {table.input_tokens.mean():.0f} in (largest call), "
+        f"{table.output_tokens.mean():.0f} out"
+    )
     print(f"cost: ${table.cost_usd.sum():.4f}")
 
 
@@ -184,6 +207,9 @@ def main() -> None:
     parser.add_argument("--provider", default="ollama", help="ollama or anthropic")
     parser.add_argument("--model", help="model name; default from the config")
     parser.add_argument("--live", action="store_true", help="allow new model calls")
+    parser.add_argument(
+        "--history", default=cfg.AGENT_HISTORY, choices=["compact", "transcript"]
+    )
     args = parser.parse_args()
     if args.command == "all":
         run_all(args.quick, args.jobs)
@@ -191,7 +217,7 @@ def main() -> None:
         calibrate()
     else:
         default = cfg.LOCAL_MODEL if args.provider == "ollama" else cfg.API_MODEL
-        pilot(Model(args.provider, args.model or default), args.live)
+        pilot(Model(args.provider, args.model or default), args.live, args.history)
 
 
 if __name__ == "__main__":

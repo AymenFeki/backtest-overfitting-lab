@@ -1,5 +1,6 @@
 """Every number that defines the experiments lives here."""
 
+import os
 from dataclasses import dataclass
 
 import numpy as np
@@ -135,12 +136,16 @@ RW_BLOCK = 20  # block length in days, about one half-life of a volatility shock
 
 # --- language-model agent (Stage 4) ----------------------------------------
 AGENT_ROUNDS = 20  # strategies one agent may try in one world
+AGENT_HISTORY = "compact"  # or "transcript"; see agent.py
 LOCAL_MODEL = "qwen2.5-coder:7b"
-OLLAMA_URL = "http://localhost:11434"
+OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://localhost:11434")
 # First characters of each model's digest (`ollama list` shows them). A live
 # call stops if the installed weights are a different version.
 OLLAMA_DIGESTS = {"qwen2.5-coder:7b": "dae161e27b0e"}
-OLLAMA_CONTEXT = 16384  # tokens the model can see; Ollama's default cuts silently
+# Tokens the model can see. Memory grows with this number, and 16384 with a
+# 9 GB model ran a 16 GB machine out of memory, so it is capped. With the
+# compact history a 20-round prompt stays under 2,500 tokens.
+OLLAMA_CONTEXT = 8192
 LLM_TEMPERATURE = 0.7  # some randomness, so 20 rounds give 20 different ideas
 LLM_MAX_TOKENS = 600  # per reply
 API_MODEL = "claude-haiku-5-5"

@@ -107,21 +107,22 @@ def _ollama_post(endpoint: str, body: dict | None = None) -> dict:
 
 
 @cache
-def ollama_digest(name: str) -> str:
-    """Identifier of the exact model weights installed under this name."""
-    installed = {m["name"]: m["digest"] for m in _ollama_post("tags")["models"]}
-    return installed[name]
+def _installed(name: str) -> dict:
+    """Ollama's record of an installed model: digest, capabilities, size."""
+    models = {m["name"]: m for m in _ollama_post("tags")["models"]}
+    return models[name]
 
 
 def _ollama(model: Model, system: str, messages: list[dict], seed: int) -> Reply:
+    record = _installed(model.name)
     pinned = cfg.OLLAMA_DIGESTS.get(model.name)
-    if pinned and not ollama_digest(model.name).startswith(pinned):
+    if pinned and not record["digest"].startswith(pinned):
         raise RuntimeError(f"{model.name} is not the pinned version {pinned}")
     body = {
         "model": model.name,
         "messages": [{"role": "system", "content": system}, *messages],
         "stream": False,
-        "keep_alive": "30m",
+        "keep_alive": "10m",
         "options": {
             "seed": seed,
             "temperature": cfg.LLM_TEMPERATURE,
@@ -129,7 +130,11 @@ def _ollama(model: Model, system: str, messages: list[dict], seed: int) -> Reply
             "num_ctx": cfg.OLLAMA_CONTEXT,
         },
     }
+    if "thinking" in record.get("capabilities", []):
+        body["think"] = False  # plain replies from every model, as with the API
     answer = _ollama_post("chat", body)
+    if answer.get("prompt_eval_count", 0) + cfg.LLM_MAX_TOKENS > cfg.OLLAMA_CONTEXT:
+        raise RuntimeError("the prompt no longer fits the context; it would be cut")
     return Reply(
         text=answer["message"]["content"],
         input_tokens=answer.get("prompt_eval_count", 0),

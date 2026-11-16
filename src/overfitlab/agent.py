@@ -4,8 +4,21 @@ Each round the model proposes a hypothesis and a `positions(prices)` function.
 The function is checked, run in the sandbox and backtested by the same engine
 as every other strategy; the model is then told the result on the research
 sample (the first 70% of days) and tries again. It never sees prices, the
-lockbox, or which world it is in. Its conversation only grows, so every round
-it sees everything it tried before: that is what makes it adaptive.
+lockbox, or which world it is in.
+
+What the model remembers (`history`):
+
+* "compact" (default): every round starts a fresh conversation that holds a
+  table of all past rounds (hypothesis, status, research Sharpe) and, if the
+  last round failed, its error. The model sees every result it ever got, so it
+  stays adaptive, and the prompt stays short enough for a small local model.
+* "transcript": one conversation that only grows, including all earlier code.
+
+If the code of a round cannot be used (error, look-ahead, a repeat), the model
+is shown the reason and may send a corrected version, up to two times. Only
+the final version is the round's trial. Code that failed was never backtested,
+so the model learned nothing about the data from it and it does not count as
+a trial for the multiple-testing corrections.
 """
 
 import re
@@ -41,17 +54,28 @@ def positions(prices):
 Rules for the function:
 - `prices` is a pandas DataFrame: one row per trading day (oldest first), one \
 column per asset.
-- Return a DataFrame of the same shape: the weight to hold in each asset on \
-each day. Positive is long, negative is short.
+- Return a DataFrame of the same shape, index and columns: the weight to hold \
+in each asset on each day. Positive is long, negative is short.
 - The weight on a day may use prices up to and including that day only. Never \
 use later rows: no shift(-1), no statistics over the whole table.
 - The backtest trades the weights on the following day, scales them down if \
 their absolute values sum to more than 1, and charges 5 basis points on every \
-change in holdings.
+change in holdings. Do not normalise the weights yourself.
 - Only `np` (numpy) and `pd` (pandas) exist, already imported. No other \
-imports, no files, no random numbers.
-- Use vectorised pandas and numpy operations; no loops over days.
+imports, no files, no random numbers, no loops over days.
+- Every round must be a new strategy. Never send the same code twice.
+
+A complete valid reply, to show the form only (it holds every asset equally \
+and uses no signal):
+
+Hypothesis: Holding all assets equally earns the average market return.
+```python
+def positions(prices):
+    weights = pd.DataFrame(1.0, index=prices.index, columns=prices.columns)
+    return weights / prices.shape[1]
+```
 """
+REPAIRS = 2  # extra attempts per round when the code cannot be used
 _CODE = re.compile(r"```(?:python)?\s*\n(.*?)```", re.DOTALL)
 _HYPOTHESIS = re.compile(r"Hypothesis:\s*(.+)")
 
@@ -61,9 +85,10 @@ class Trial:
     round: int
     hypothesis: str
     code: str
-    status: str  # "ok", or why the proposal could not be used
+    status: str  # "ok", or why the final version could not be used
     returns: pd.Series | None  # net daily returns over the whole world
-    reply: Reply
+    replies: list[Reply]  # one per attempt: the proposal and any repairs
+    failures: list[str]  # why each failed attempt of this round was rejected
 
 
 def market_summary(prices: pd.DataFrame) -> str:
@@ -99,36 +124,80 @@ def parse(text: str) -> tuple[str, str]:
     )
 
 
+def _research_sharpe(trial: Trial) -> float:
+    return float(sharpe(trial.returns.iloc[: cfg.N_RESEARCH]))
+
+
+def history_table(trials: list[Trial]) -> str:
+    """All past rounds as the agent sees them in compact mode."""
+    if not trials:
+        return "No rounds yet."
+    lines = [
+        "Your rounds so far (Sharpe ratio after costs on the backtest):",
+        "round | status | Sharpe | hypothesis",
+    ]
+    for t in trials:
+        score = "-" if t.returns is None else f"{_research_sharpe(t):.2f}"
+        status = "ok" if t.status == "ok" else "failed"
+        lines.append(f"{t.round} | {status} | {score} | {t.hypothesis[:150]}")
+    if trials[-1].returns is None:
+        lines.append(f"Round {trials[-1].round} failed with: {trials[-1].status}.")
+    return "\n".join(lines)
+
+
 def run_agent(
     prices: pd.DataFrame,
     model: Model,
     seed: int,
     rounds: int = cfg.AGENT_ROUNDS,
     live: bool = False,
+    history: str = cfg.AGENT_HISTORY,
 ) -> list[Trial]:
     """One agent, one world: `rounds` proposals, each with its backtest."""
     trials: list[Trial] = []
     messages: list[dict] = []
-    note = market_summary(prices)
+    summary = market_summary(prices)
+    note = summary  # transcript mode: what happened since the last message
     for number in range(1, rounds + 1):
-        ask = f"{note} Round {number} of {rounds}: propose a strategy."
-        messages.append({"role": "user", "content": ask})
-        reply = complete(model, SYSTEM, messages, seed * 100 + number, live)
-        messages.append({"role": "assistant", "content": reply.text})
-        hypothesis, code = parse(reply.text)
-        returns = None
-        if not code:
-            status = "no Python code block in the reply"
+        ask = f"Round {number} of {rounds}: propose a new strategy."
+        if history == "compact":
+            messages = []  # a fresh conversation every round
+            ask = f"{summary}\n\n{history_table(trials)}\n\n{ask}"
         else:
-            weights, status = run_strategy(code, prices)
-        if status == "ok":
-            returns = net_returns(prices, weights)
+            ask = f"{note} {ask}"
+        replies: list[Reply] = []
+        failures: list[str] = []
+        for attempt in range(1 + REPAIRS):
+            messages.append({"role": "user", "content": ask})
+            call_seed = seed * 1000 + number * 10 + attempt
+            replies.append(complete(model, SYSTEM, messages, call_seed, live))
+            messages.append({"role": "assistant", "content": replies[-1].text})
+            hypothesis, code = parse(replies[-1].text)
+            returns, status = None, "no Python code block in the reply"
+            if code:
+                weights, status = run_strategy(code, prices)
             same = [t.round for t in trials if t.status == "ok" and t.code == code]
-            if same:
-                returns, status = None, f"identical to round {same[0]}"
-        trials.append(Trial(number, hypothesis, code, status, returns, reply))
+            if status == "ok" and same:
+                status = f"identical to round {same[0]}"
+            if status == "ok":
+                returns = net_returns(prices, weights)
+                break
+            failures.append(status)
+            ask = (
+                f"That code cannot be used: {status}. "
+                "Send a corrected reply in the same format."
+            )
+        trial = Trial(number, hypothesis, code, status, returns, replies, failures)
+        trials.append(trial)
         if returns is None:
             note = f"Round {number} could not be used: {status}."
         else:
             note = f"Round {number} result: {research_feedback(returns)}."
+        done = [t for t in trials if t.returns is not None]
+        if done:
+            best = max(done, key=_research_sharpe)
+            note += (
+                f" Best so far: round {best.round}, "
+                f"Sharpe ratio {_research_sharpe(best):.2f}."
+            )
     return trials
