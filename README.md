@@ -1,7 +1,8 @@
 # Backtest Overfitting Lab
 
-**Work in progress: Stage 4 of 6 (the LLM agent) is done.** This README is a
-placeholder; the full write-up comes with the last stage.
+**Work in progress: Stage 5 of 6 (holdout reuse and the Goodhart test) is
+done.** This README is a placeholder; the full write-up comes with the last
+stage.
 
 **Question:** when many trading strategies are backtested on the same data,
 which statistical filters stop the false discoveries, and how many real
@@ -131,7 +132,8 @@ it:
   the naive filter would pass something in 11.0% of no-signal worlds for the
   grid and 3.3% for the agent, against 4.0% and 0% with costs. The agent's
   lower rate comes from trying 20 strategies per world instead of 76, not
-  from costs. Details in [results/stage4.md](results/stage4.md).
+  from costs. Details in [results/stage4.md](results/stage4.md); the
+  zero-cost numbers come from [scripts/zero_cost.py](scripts/zero_cost.py).
 
 ![Grid search against the LLM agent](results/figures/exp1_agent_vs_grid.png)
 
@@ -224,7 +226,8 @@ over worlds. "Told": the declared rule, on the answer the analyst got.
   worlds would be unlikely at a true 5% rate (p = 0.009), but the bar is the
   5% point for a true Sharpe of 0, and the chosen strategies lose 0.09 a year
   after costs. For them the expected rate is 3.7%, and 3 of 200 is within
-  chance (p = 0.057). At zero cost the same strategies give 5 claims of 200.
+  chance (p = 0.057). At zero cost the same strategies give 5 claims of 200
+  ([results/zero_cost.md](results/zero_cost.md)).
 
 - Thresholdout answered from the lockbox in 45% of the hill-climber's answered
   rounds and 43% of the agent's. Its budget ran out in 83% of hill-climber
@@ -249,9 +252,10 @@ told what the checks are.
   prompts, so both arms saw "none" in every row and got no information to
   act on; the experiment cannot show whether knowing the checks helps an
   agent game them. Costs are not the reason: at zero cost the same strategies
-  still pass no check and no filter. Twenty noise strategies rarely reach
-  these bars at all. It was not re-run; a fair test needs checks that noise
-  passes often enough to learn from.
+  still pass no check and no filter
+  ([results/zero_cost.md](results/zero_cost.md)). Twenty noise strategies
+  rarely reach these bars at all. It was not re-run; a fair test needs checks
+  that noise passes often enough to learn from.
 - No filter accepted any strategy in either arm (the Stage 4 agent, which saw
   only its Sharpe ratios, had one world of 15 passing CPCV and one passing
   Romano-Wolf).
@@ -271,6 +275,7 @@ uv run python -m overfitlab all --quick  # small check run, writes to results/qu
 uv run python -m overfitlab agent        # only the agent experiment, from stored replies
 uv run python -m overfitlab exp2         # holdout reuse: hill-climber and agent
 uv run python -m overfitlab exp3         # told against not told
+uv run python scripts/zero_cost.py --jobs 6  # the same strategies without costs
 ```
 
 `all` makes no model call. The one command that does is
@@ -314,4 +319,4 @@ All randomness derives from one master seed (`20261116` in
 - **One model, one prompt.** The agent results come from Claude Haiku 5.5 with
   one prompt, 30 worlds per type. Another model or prompt could propose
   different strategies.
-- **Not finished.** Thresholdout and the real-data check are still to come.
+- **Not finished.** The real-data check (Stage 6) is still to come.

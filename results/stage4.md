@@ -158,8 +158,8 @@ costs.
 
 Turnover and Sharpe ratios computed with the engine's own rules (one-day lag,
 exposure capped at 100%); the zero-cost returns are the same positions with
-the cost set to 0. Reproduced by a script outside the package, not by
-`python -m overfitlab`.
+the cost set to 0. Reproduced by `uv run python scripts/zero_cost.py`,
+which writes [zero_cost.md](zero_cost.md).
 
 ## How to read the comparison
 

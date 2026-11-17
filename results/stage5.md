@@ -244,9 +244,10 @@ made once and is counted in both.
   from, and when the budget ran out.
 - `exp2_agent.csv`, `exp2_agent_rounds.csv`: the agent, per round, summary and
   raw. `exp2_agent_paired.csv`: the McNemar test.
-
-The zero-cost checks ("once" candidates and Experiment 3 strategies) come from
-a script outside the package, not from `python -m overfitlab`.
 - `exp3_points.csv`: accepted strategies per filter and arm, and paired
   differences. `exp3_runs.csv`: per run descriptors.
 - `figures/exp2_holdout_reuse.png`, `figures/exp3_goodhart.png`.
+
+The zero-cost checks ("once" candidates and Experiment 3 strategies) are
+reproduced by `uv run python scripts/zero_cost.py`, which writes
+[zero_cost.md](zero_cost.md).
