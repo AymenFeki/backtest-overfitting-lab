@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+import pytest
 
 from overfitlab import agent, holdout_reuse
 from overfitlab import config as cfg
@@ -275,3 +276,30 @@ def test_agent_sees_the_mechanisms_answers_as_validation_sharpe(monkeypatch):
     assert set(summary.mechanism) == {"reuse", "thresholdout"}
     assert summary.n_worlds.eq(1).all() and summary.true_claims.eq(0).all()
     assert holdout_reuse.AGENT_MECHANISMS == [REUSE, THRESHOLDOUT]
+
+
+def test_paired_test_counts_discordant_worlds_and_gives_the_exact_p_value():
+    # Reuse claims in worlds 0 to 3, Thresholdout in world 0 only: three
+    # discordant worlds, all one way, p = 2 x 0.5^3 = 0.25.
+    rows = [
+        {
+            "world_type": "w",
+            "world": world_index,
+            "mechanism": name,
+            "round": 1,
+            "answer": answer,
+            "research": 0.0,
+            "lockbox": answer,
+            "true_sharpe": 0.0,
+        }
+        for world_index in range(5)
+        for name, answer in [
+            ("reuse", 1.5 if world_index < 4 else 0.0),
+            ("thresholdout", 1.5 if world_index == 0 else 0.0),
+        ]
+    ]
+    out = holdout_reuse.paired_test(pd.DataFrame(rows), "reuse", "thresholdout", 1)
+    told = out.set_index("rule").loc["false_claim"]
+    assert (told.reuse_claims, told.thresholdout_claims) == (4, 1)
+    assert (told.only_reuse, told.only_thresholdout) == (3, 0)
+    assert told.p_value == pytest.approx(0.25)

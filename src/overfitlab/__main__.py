@@ -199,6 +199,8 @@ def run_reuse(quick: bool, jobs: int) -> None:
     agent.to_csv(out / "exp2_agent.csv", index=False, float_format="%.4f")
     sources = holdout_reuse.answer_sources(rounds)
     sources.to_csv(out / "exp2_agent_sources.csv", index=False, float_format="%.4f")
+    paired = holdout_reuse.paired_test(rounds, "reuse", "thresholdout")
+    paired.to_csv(out / "exp2_agent_paired.csv", index=False, float_format="%.4f")
     main = climber[
         (climber.true_threshold == cfg.TRUE_SHARPE_MIN)
         & (climber.world_type == "no_signal")

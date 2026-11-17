@@ -157,10 +157,20 @@ Share of no-signal worlds with a (false) claim after 40 rounds, 95% intervals
 over worlds. "Told": the declared rule, on the answer the analyst got.
 "Actual": the candidate's real lockbox Sharpe above 0.95, added afterwards.
 
-| Analyst | Lockbox opened once | Reported every round | Thresholdout, told | Thresholdout, actual |
+| Analyst | Lockbox opened once | Reported every round, told = actual | Thresholdout, told | Thresholdout, actual |
 |---|---|---|---|---|
 | Hill-climber over the 76 grid strategies, 200 worlds | 1.5 [0.0, 3.5] | 41.5 [35.0, 48.5] | 32.0 [25.5, 39.0] | 31.0 [24.5, 37.5] |
 | Haiku agent, 15 worlds per arm | (not run) | 33.3 [13.3, 60.0] | 13.3 [0.0, 33.3] | 13.3 [0.0, 33.3] |
+
+- **The agent's two arms do not differ significantly.** They ran on the same
+  15 worlds: reuse claimed in 5, Thresholdout in 2, and the 3 worlds where
+  they disagree all go the same way. Exact McNemar test on those 3: p = 0.25,
+  on either rule.
+- **"Opened once" is below 5% mostly because of costs.** 3 claims in 200
+  worlds would be unlikely at a true 5% rate (p = 0.009), but the bar is the
+  5% point for a true Sharpe of 0, and the chosen strategies lose 0.09 a year
+  after costs. For them the expected rate is 3.7%, and 3 of 200 is within
+  chance (p = 0.057). At zero cost the same strategies give 5 claims of 200.
 
 - Thresholdout answered from the lockbox in 45% of the hill-climber's answered
   rounds and 43% of the agent's. Its budget ran out in 83% of hill-climber
@@ -181,8 +191,13 @@ holdout, walk-forward, deflated Sharpe, CPCV, Benjamini-Hochberg,
 Romano-Wolf) each past strategy passes, with the same goal; only one arm is
 told what the checks are.
 
-- No strategy passed any check in any of the 600 prompts, so both arms saw
-  "none" in every row.
+- **A documented null.** No strategy passed any check in any of the 600
+  prompts, so both arms saw "none" in every row and got no information to
+  act on; the experiment cannot show whether knowing the checks helps an
+  agent game them. Costs are not the reason: at zero cost the same strategies
+  still pass no check and no filter. Twenty noise strategies rarely reach
+  these bars at all. It was not re-run; a fair test needs checks that noise
+  passes often enough to learn from.
 - No filter accepted any strategy in either arm (the Stage 4 agent, which saw
   only its Sharpe ratios, had one world of 15 passing CPCV and one passing
   Romano-Wolf).

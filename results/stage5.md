@@ -83,9 +83,21 @@ actual are mean Sharpe ratios of the candidate.
 In round 1 (one strategy, one look) once and reuse are at 3.5% [1.5, 6.0] and
 the 12-year mechanisms at 2.5% [0.5, 5.0] on the actual-lockbox rule. On the
 told rule the Thresholdout variants range from 0.5% (threshold 4) to 11.5%
-(noise 2 SE), because the noise moves the answer. The "once" rate is below 5%
-because no-signal strategies have a negative true Sharpe after costs (see
-"How to read the numbers" in the README).
+(noise 2 SE), because the noise moves the answer.
+
+**Why "once" is at 1.5% and not 5%.** 3 claims in 200 worlds; if the true
+rate were 5%, 3 or fewer would happen with probability 0.009 (exact
+binomial). Most of the gap is costs, the rest is within chance:
+
+- The bar of 0.95 is the 5% point for a strategy whose true Sharpe is 0. The
+  candidates here lose money after costs: their mean true Sharpe is -0.09.
+  With a lockbox standard error of 0.58, the expected claim rate for these
+  candidates is 3.7%, and 3 or fewer claims in 200 then has probability
+  0.057.
+- With the same candidates at zero cost (same positions, no cost), 5 of 200
+  would have been claimed (2.5%). The candidates' mean lockbox Sharpe is
+  -0.12 after costs and -0.03 before. Their measured spread across worlds,
+  0.58, matches the standard error used for the bar.
 
 ### Hill-climber, medium-momentum worlds (200), round 40
 
@@ -141,6 +153,16 @@ worlds give the same picture for every variant; all rows are in
 
 Percent of worlds with a false claim; 6.7% is one world of 15.
 
+**Paired comparison.** Both arms ran on the same 15 worlds, so they are
+compared world by world with an exact McNemar test (`exp2_agent_paired.csv`).
+After 40 rounds, reuse made a false claim in 5 worlds and Thresholdout in 2.
+The discordant worlds are 3 (a claim under reuse only) and 0 (under
+Thresholdout only). If the arms did not differ, each discordant world would
+go either way with probability 1/2, so the two-sided p-value is
+2 x 0.5^3 = 0.25. The same holds on the actual-lockbox rule. **The difference
+between the arms is not significant**; with 15 worlds, at least 6 discordant
+worlds, all in the same direction, would be needed for p below 0.05.
+
 - **Usable rounds:** 587 of 600 (reuse), 598 of 600 (Thresholdout).
 - **Thresholdout answers:** 26.4 of 39.9 usable rounds per run were answered;
   8.8 came from the lockbox, a share of 42.8% [31.8, 54.3]. The budget ran out
@@ -185,6 +207,28 @@ Percent of worlds with a false claim; 6.7% is one world of 15.
   hypotheses and 10.0% of the not-told arm's; words about multiple testing or
   overfitting in 2.7% of both.
 
+### A documented null, and why
+
+Experiment 3 cannot tell whether knowing the checks helps an agent game
+them, and it was not re-run. The reason is that the feedback carried no
+information: no strategy passed a check, so every prompt in both arms showed
+"none" in every row, and the two arms differed only in the description text.
+An agent cannot steer towards a check it never sees passing.
+
+Costs are not the cause. Run again on the same strategies at zero cost (same
+positions, no transaction costs), no strategy in either arm passes any of the
+six checks or any of the ten filters either. These agents traded more than
+the Stage 4 agent (one-way turnover about 60 a year against 36), and their
+research Sharpe is -0.25 (not told) and -0.30 (told) after costs and 0.11 and
+0.07 before. Twenty noise strategies with Sharpe ratios that small do not
+reach the checks' bars with or without costs. The Stage 4 agent on the same
+worlds got one strategy past CPCV and one past Romano-Wolf in 15 worlds, so
+passes on noise are rare to begin with.
+
+A test of gaming needs checks that can be passed by chance often enough to
+learn from, for example more rounds, lower bars in the feedback than in the
+final scoring, or worlds with a weak signal. None of this was run.
+
 ## Cost
 
 Stage 5 spent $0.7939 (ledger: $0.8315 before, $1.6254 after), for 1,900 new
@@ -199,7 +243,10 @@ made once and is counted in both.
 - `exp2_climber_sources.csv`, `exp2_agent_sources.csv`: where the answers came
   from, and when the budget ran out.
 - `exp2_agent.csv`, `exp2_agent_rounds.csv`: the agent, per round, summary and
-  raw.
+  raw. `exp2_agent_paired.csv`: the McNemar test.
+
+The zero-cost checks ("once" candidates and Experiment 3 strategies) come from
+a script outside the package, not from `python -m overfitlab`.
 - `exp3_points.csv`: accepted strategies per filter and arm, and paired
   differences. `exp3_runs.csv`: per run descriptors.
 - `figures/exp2_holdout_reuse.png`, `figures/exp3_goodhart.png`.

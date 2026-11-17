@@ -44,9 +44,13 @@ def cscv_logits(returns: np.ndarray, n_blocks: int = N_BLOCKS) -> np.ndarray:
     n_days = size * n_blocks // 2
 
     def half_sharpe(weights: np.ndarray) -> np.ndarray:
+        # A strategy that never trades in a half has no variance there. Its
+        # Sharpe counts as 0, as in backtest.sharpe; as NaN it would win the
+        # in-sample argmax (NaN is its maximum) and then rank below everything.
         mean = weights @ sums / n_days
         variance = (weights @ squares - n_days * mean**2) / (n_days - 1)
-        return mean / np.sqrt(variance)
+        with np.errstate(divide="ignore", invalid="ignore"):
+            return np.where(variance > 0, mean / np.sqrt(variance), 0.0)
 
     inside, outside = half_sharpe(in_sample), half_sharpe(1 - in_sample)
     winner = outside[np.arange(len(halves)), inside.argmax(axis=1)]

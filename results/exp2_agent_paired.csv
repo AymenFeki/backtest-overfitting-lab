@@ -1,0 +1,3 @@
+rule,round,n_worlds,reuse_claims,thresholdout_claims,only_reuse,only_thresholdout,p_value
+false_claim,40,15,5,2,3,0,0.2500
+lockbox_false_claim,40,15,5,2,3,0,0.2500

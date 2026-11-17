@@ -28,6 +28,7 @@ from functools import partial
 
 import numpy as np
 import pandas as pd
+from scipy.stats import binomtest
 
 from . import config as cfg
 from .agent import SYSTEM, Column, Trial, run_agent
@@ -430,6 +431,42 @@ def summarise_reuse(
                 "lockbox": part.lockbox.mean(),
                 "true_sharpe": part.true_sharpe.mean(),
                 "answered": part.answered.mean(),
+            }
+        )
+    return pd.DataFrame(rows)
+
+
+def paired_test(
+    table: pd.DataFrame, first: str, second: str, number: int = cfg.REUSE_ROUNDS
+) -> pd.DataFrame:
+    """Exact McNemar test of two mechanisms run on the same worlds.
+
+    Per world, does each mechanism have a false claim after `number` rounds?
+    Only the discordant worlds (a claim under one and not the other) carry
+    information; under "no difference" each is equally likely to go either
+    way, so their split is Binomial(discordant, 1/2). Two-sided p-value. One
+    row per claim rule.
+    """
+    claims = candidates(table, cfg.TRUE_SHARPE_MIN)
+    claims = claims[claims["round"] == number]
+    rows = []
+    for rule in ["false_claim", "lockbox_false_claim"]:
+        wide = claims.pivot(index="world", columns="mechanism", values=rule)
+        a, b = wide[first].astype(bool), wide[second].astype(bool)
+        only_first, only_second = int((a & ~b).sum()), int((~a & b).sum())
+        p = 1.0
+        if only_first + only_second:
+            p = binomtest(only_first, only_first + only_second).pvalue
+        rows.append(
+            {
+                "rule": rule,
+                "round": number,
+                "n_worlds": len(wide),
+                f"{first}_claims": int(a.sum()),
+                f"{second}_claims": int(b.sum()),
+                f"only_{first}": only_first,
+                f"only_{second}": only_second,
+                "p_value": p,
             }
         )
     return pd.DataFrame(rows)
