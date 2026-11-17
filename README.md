@@ -1,8 +1,6 @@
 # Backtest Overfitting Lab
 
-**Work in progress: Stage 5 of 6 (holdout reuse and the Goodhart test) is
-done.** This README is a placeholder; the full write-up comes with the last
-stage.
+**Stages 1–5 complete; Stage 6 (real-data check) in progress.**
 
 **Question:** when many trading strategies are backtested on the same data,
 which statistical filters stop the false discoveries, and how many real
@@ -12,6 +10,34 @@ strategies do they throw away in the process?
 planted signal of known strength), a strategy generator that tries many ideas,
 and filters that decide which ideas to believe. False discovery rate and power
 are measured over hundreds of simulated worlds.
+
+**Key results so far:**
+
+- With a grid of 76 strategies and a medium-strength signal, every filter
+  keeps the false discovery rate at 1.6% or below; what separates them is
+  power: Benjamini-Hochberg finds 18.5% of the real strategies, Romano-Wolf
+  9.5%, a single holdout 6.6%, and the deflated Sharpe ratio as published
+  none ([tables](results/exp1_grid_tables.md)).
+- No filter protects against a signal that fades: with alpha decay, 35% to
+  69% of what the research-sample filters accept is worthless
+  ([Stage 3 note](results/stage3.md)).
+- A Claude Haiku agent writing its own strategies proposes far more real ones
+  than the grid (68% to 85% against 24% to 42% on signal worlds), and the
+  same filters accept more of them with a false discovery rate of 1.4% or
+  below; but it proposes the planted textbook signals before seeing any data,
+  so this measures prior knowledge as much as research
+  ([Stage 4 note](results/stage4.md)).
+- Reporting the lockbox result after every round raises false claims on noise
+  from 1.5% (lockbox opened once) to 41.5% for a simple hill-climber.
+  Thresholdout at its declared settings only brings this to 32%, and the
+  lockbox stays honest (7% of the chosen strategies really clear the bar)
+  only when the answers are so noisy that 90% of the claims made from them
+  are false ([Stage 5 note](results/stage5.md)).
+- Whether knowing the filters helps an agent game them could not be tested:
+  on noise no agent strategy ever passed a check, so the feedback carried no
+  information ([Stage 5 note](results/stage5.md)).
+
+![FDR against power for each filter, by signal strength](results/figures/exp1_grid_fdr_power.png)
 
 ## How to read the numbers
 

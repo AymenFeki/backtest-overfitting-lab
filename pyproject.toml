@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "A controlled experiment on false discoveries in strategy backtesting"
 readme = "README.md"
 authors = [
-    { name = "Aymen Feki", email = "Feki.Aymen@campus.lmu.de" }
+    { name = "Aymen Feki" }
 ]
 requires-python = ">=3.13"
 dependencies = [
