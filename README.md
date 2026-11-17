@@ -1,8 +1,7 @@
 # Backtest Overfitting Lab
 
-**Work in progress: Stage 3 of 6 is done and Stage 4 (the LLM agent) has
-started.** This README is a placeholder; the full write-up comes with the last
-stage.
+**Work in progress: Stage 4 of 6 (the LLM agent) is done.** This README is a
+placeholder; the full write-up comes with the last stage.
 
 **Question:** when many trading strategies are backtested on the same data,
 which statistical filters stop the false discoveries, and how many real
@@ -79,12 +78,57 @@ an effective number of independent trials accepts nothing on noise and finds
 
 ![FDR against power](results/figures/exp1_grid_fdr_power.png)
 
-## The LLM agent (Stage 4, in progress)
+## The LLM agent (Stage 4)
 
 A language model plays the researcher: each round it writes a hypothesis and
 a `positions(prices)` function, the function is checked, run in a sandbox with
 the look-ahead test, backtested by the same engine as the grid, and the model
 is told the result on the research sample.
+
+**Run:** Claude Haiku 5.5, 20 rounds per world, 30 worlds each of no signal
+and the three medium signals (the grid's world seeds 0 to 29): 120 runs, 2,510
+calls, $0.83. Every usable strategy's true Sharpe was measured on the same
+10,000 simulated years as the grid's. Full note:
+[results/stage4.md](results/stage4.md).
+
+- **Usable rounds:** 99.2% [98.7, 99.6] of 2,400 (95% interval over the 120
+  runs); 20 rounds stayed unusable after two repairs. The look-ahead test
+  rejected 2 of 2,510 attempts (0.08%), and both were repaired.
+- **Share of true strategies:** 85%, 84% and 68% of the agent's strategies on
+  momentum, cross-sectional and mean-reversion worlds, against 42%, 38% and
+  24% of the grid's 76. None on no-signal worlds for either.
+
+Filters at their conventional cut, truth threshold 0.2, percent with 95%
+intervals over worlds (agent 30 worlds per type, grid 200):
+
+| Filter | No signal: FDR agent | No signal: FDR grid | Medium: FDR agent | Medium: FDR grid | Medium: power agent | Medium: power grid |
+|---|---|---|---|---|---|---|
+| Naive Sharpe | 0.0 [0.0, 0.0] | 4.0 [1.5, 7.0] | 1.1 [0.0, 3.3] | 1.6 [0.9, 2.4] | 37.4 [30.4, 44.6] | 16.4 [14.8, 18.0] |
+| Holdout | 0.0 [0.0, 0.0] | 0.0 [0.0, 0.0] | 0.0 [0.0, 0.0] | 0.3 [0.0, 0.7] | 17.9 [12.7, 23.6] | 6.6 [5.8, 7.6] |
+| Walk-forward | 0.0 [0.0, 0.0] | 0.5 [0.0, 1.5] | 0.0 [0.0, 0.0] | 0.7 [0.2, 1.2] | 29.1 [22.6, 36.1] | 11.8 [10.5, 13.1] |
+| Deflated Sharpe (paper) | 0.0 [0.0, 0.0] | 0.0 [0.0, 0.0] | 0.0 [0.0, 0.0] | 0.0 [0.0, 0.0] | 0.2 [0.0, 0.7] | 0.0 [0.0, 0.0] |
+| Deflated Sharpe (variant) | 0.0 [0.0, 0.0] | 0.0 [0.0, 0.0] | 0.0 [0.0, 0.0] | 0.2 [0.0, 0.7] | 26.0 [19.6, 33.0] | 4.4 [3.6, 5.2] |
+| CPCV | 3.3 [0.0, 10.0] | 1.0 [0.0, 2.5] | 0.0 [0.0, 0.0] | 1.1 [0.5, 1.9] | 22.9 [17.2, 29.2] | 8.1 [7.2, 9.1] |
+| Benjamini-Hochberg | 0.0 [0.0, 0.0] | 0.0 [0.0, 0.0] | 1.4 [0.1, 4.0] | 1.1 [0.6, 1.7] | 54.1 [45.3, 62.6] | 18.5 [16.5, 20.7] |
+| Benjamini-Yekutieli | 0.0 [0.0, 0.0] | 0.0 [0.0, 0.0] | 0.0 [0.0, 0.0] | 0.2 [0.0, 0.4] | 38.5 [30.4, 46.7] | 8.1 [6.7, 9.6] |
+| Romano-Wolf | 3.3 [0.0, 10.0] | 0.5 [0.0, 1.5] | 1.1 [0.0, 3.3] | 0.8 [0.4, 1.4] | 42.9 [35.4, 50.8] | 9.5 [8.4, 10.7] |
+| PBO (best only) | 0.0 [0.0, 0.0] | 1.0 [0.0, 2.5] | 0.0 [0.0, 0.0] | 0.8 [0.2, 1.7] | 1.2 [0.5, 2.2] | 1.8 [1.6, 1.9] |
+
+"Medium" pools the three signal types (agent 90 worlds, grid 600). pFDR and
+the per-type tables are in [results/stage4.md](results/stage4.md). How to read
+it:
+
+- **Power is not comparable one to one.** It is the share of each
+  generator's *own* true strategies that a filter accepts. The agent's true
+  strategies are few and mostly strong; the grid's include many weak ones.
+- **The agent tries about 20 strategies per world, the grid 76**, so the
+  multiple-testing corrections charge it less.
+- **30 worlds per type give wide intervals.** The agent's 3.3% for CPCV and
+  Romano-Wolf on no-signal worlds is one world each.
+
+![Grid search against the LLM agent](results/figures/exp1_agent_vs_grid.png)
+
+How the agent is set up:
 
 - **What the agent remembers.** By default every round is a fresh prompt with
   a table of all its past rounds (hypothesis, status, research-sample Sharpe)
@@ -107,9 +151,12 @@ is told the result on the research sample.
   The files hold the replies, token counts, timing and cost, and nothing else.
 - **What the agent already knows.** The planted signals (momentum,
   cross-sectional momentum, short-term reversal) are textbook ideas, and the
-  model has read the textbooks. It proposes them without seeing any data, so
-  its power here partly reflects prior knowledge, not discovery from the
-  backtests. A signal that is in no textbook would be a harder and fairer test.
+  model has read the textbooks. It proposes them without seeing any data (in
+  round 1, before any result, 117 of 120 replies describe a cross-sectional
+  or relative idea, 79 a momentum idea, 41 a reversal idea), so its power and
+  its high share of true strategies partly reflect prior knowledge, not
+  discovery from the backtests. A signal that is in no textbook would be a
+  harder and fairer test.
 
 ### Which model, and why it changed
 
@@ -175,5 +222,7 @@ All randomness derives from one master seed (`20261116` in
 - **Alpha decay is tested in one setting.** One half-life (5 years) on one
   signal strength (obvious). A slower decay or a weaker signal would give
   different numbers; the direction of the result is what carries over.
-- **Not finished.** The LLM agent, Thresholdout and the real-data check are
-  still to come.
+- **One model, one prompt.** The agent results come from Claude Haiku 5.5 with
+  one prompt, 30 worlds per type. Another model or prompt could propose
+  different strategies.
+- **Not finished.** Thresholdout and the real-data check are still to come.
