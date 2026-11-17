@@ -125,6 +125,13 @@ it:
   multiple-testing corrections charge it less.
 - **30 worlds per type give wide intervals.** The agent's 3.3% for CPCV and
   Romano-Wolf on no-signal worlds is one world each.
+- **On noise, costs lower both generators' false positives, but not the gap
+  between them.** Costs take 0.22 off the research Sharpe of agent and grid
+  strategies alike (similar turnover, about 36 to 38 a year). Without costs
+  the naive filter would pass something in 11.0% of no-signal worlds for the
+  grid and 3.3% for the agent, against 4.0% and 0% with costs. The agent's
+  lower rate comes from trying 20 strategies per world instead of 76, not
+  from costs. Details in [results/stage4.md](results/stage4.md).
 
 ![Grid search against the LLM agent](results/figures/exp1_agent_vs_grid.png)
 

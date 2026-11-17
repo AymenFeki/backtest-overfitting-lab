@@ -111,6 +111,56 @@ defined. The agent's 3.3% for CPCV and Romano-Wolf is one world out of 30 each.
 An agent FDR of 0.0 has the interval [0.0, 0.0]; the grid's intervals are in
 [exp1_agent_tables.md](exp1_agent_tables.md) and the CSV files.
 
+## Costs on no-signal worlds
+
+Every strategy pays 5 basis points per unit of one-way turnover. On the
+research sample of the no-signal worlds (mean over each world's strategies,
+then 95% interval over worlds):
+
+| | Agent (592 strategies, 30 worlds) | Grid (15,200 strategies, 200 worlds) |
+|---|---|---|
+| Sharpe before costs | 0.13 [0.06, 0.20] | 0.00 [-0.00, 0.00] |
+| Sharpe after costs | -0.09 [-0.16, -0.02] | -0.22 [-0.22, -0.22] |
+| Cost drag | 0.22 [0.19, 0.25] | 0.22 [0.22, 0.22] |
+| One-way turnover per year, mean (median) | 35.7 [30.5, 40.9] (19.3) | 37.8 [37.7, 37.9] (19.8) |
+| Best strategy per world, after costs (before) | 0.41 (0.54) | 0.64 (0.78) |
+| Worlds with a strategy above Sharpe 1, after costs (before) | 0% (3.3%) | 4.0% (11.0%) |
+
+Share of no-signal worlds where a filter accepts something, after costs and
+with the same strategies at zero cost (all acceptances are false):
+
+| Filter | Agent, after costs | Agent, zero cost | Grid, after costs | Grid, zero cost |
+|---|---|---|---|---|
+| Naive Sharpe | 0.0 | 3.3 | 4.0 | 11.0 |
+| Holdout | 0.0 | 0.0 | 0.0 | 0.5 |
+| Walk-forward | 0.0 | 0.0 | 0.5 | 3.0 |
+| Deflated Sharpe (variant) | 0.0 | 0.0 | 0.0 | 0.5 |
+| CPCV | 3.3 | 3.3 | 1.0 | 5.5 |
+| Benjamini-Hochberg | 0.0 | 3.3 | 0.0 | 2.5 |
+| Romano-Wolf | 3.3 | 6.7 | 0.5 | 3.0 |
+
+The published deflated Sharpe, Benjamini-Yekutieli and PBO accept nothing at
+zero cost for either generator, and PBO accepts in 1.0% of grid worlds after
+costs.
+
+- **Costs drag both generators down by the same amount.** Turnover is
+  similar, so the drag is 0.22 for both, and it removes most false positives
+  on noise for both: the grid's naive filter goes from 11.0% of worlds at zero
+  cost to 4.0%.
+- **Costs do not explain the gap between agent and grid.** At zero cost the
+  agent still has fewer worlds with a strategy above 1 (3.3% against 11.0%).
+  It tries about 20 strategies per world, the grid 76, so its best strategy
+  is lower (0.54 against 0.78 before costs).
+- **The agent's strategies earn 0.13 before costs on the research sample**,
+  where the grid's earn 0.00. No strategy has an edge on these worlds; the
+  agent sees each result and keeps building on what scored well, so its
+  in-sample Sharpe ratios are selected upwards.
+
+Turnover and Sharpe ratios computed with the engine's own rules (one-day lag,
+exposure capped at 100%); the zero-cost returns are the same positions with
+the cost set to 0. Reproduced by a script outside the package, not by
+`python -m overfitlab`.
+
 ## How to read the comparison
 
 - **Power has a different denominator for each generator.** It is the share
@@ -131,6 +181,14 @@ An agent FDR of 0.0 has the interval [0.0, 0.0]; the grid's intervals are in
   published deflated Sharpe and PBO stay below 1%), because many of the
   agent's strategies have true Sharpes between 0.2 and 0.5. Full table:
   `exp1_agent_points.csv`.
+
+## PBO correction (2026-11-17)
+
+After the fix for strategies that never trade in one half of the blocks (see
+the Stage 3 note), one agent run changed: no-signal world 23, PBO score of its
+best strategy 0 before and 0.063 after, both far below the 0.95 cut. No
+acceptance and no number in this note changed; the re-scored files are
+identical.
 
 ## Files
 

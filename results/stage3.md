@@ -261,3 +261,13 @@ has real strategies, and the last column the looser truth label.
 - `exp1_grid_tables.md`: FDR / pFDR / power for every filter, written by the
   run.
 - `figures/exp1_grid_regimes_decay.png`: the comparison above.
+
+## Correction: strategies that never trade in one half (2026-11-17)
+
+`cscv_logits` gave a strategy with no variance in one half of the blocks a
+Sharpe of NaN there. NaN won the in-sample `argmax` and then ranked below
+everything out of sample, so that combination counted as overfit. It now
+counts as Sharpe 0, as `backtest.sharpe` does, with a test that such a
+strategy never wins. Re-run on all 4,600 grid worlds: no PBO score changed (no
+grid strategy is idle for half the research sample), so every number above
+stands.

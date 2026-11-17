@@ -49,3 +49,22 @@ def test_filter_scores_only_the_best_strategy():
     best = sharpe(returns).argmax()
     assert scores[best] == pytest.approx(1 - pbo(returns.to_numpy()))
     assert np.delete(scores, best).tolist() == [0.0] * 11
+
+
+def test_a_strategy_that_never_trades_never_wins():
+    # Five strategies that earn something in every half, and one that holds
+    # nothing: its Sharpe is 0, below all others, so it is never the in-sample
+    # winner and always ranks last out of sample. A clearly losing strategy in
+    # its place must give exactly the same logits.
+    rng = np.random.default_rng(4)
+    earning = 0.02 + rng.standard_normal((800, 5)) * 0.01
+    with_zero = np.column_stack([earning, np.zeros(800)])
+    with_loser = np.column_stack([earning, -0.02 + rng.standard_normal(800) * 0.01])
+    logits = cscv_logits(with_zero, 4)
+    assert np.isfinite(logits).all()
+    assert logits == pytest.approx(cscv_logits(with_loser, 4))
+    # Idle in the first half of the days only: still no NaN, still no winner.
+    idle_half = with_zero.copy()
+    idle_half[400:, 5] = with_loser[400:, 5]
+    assert np.isfinite(cscv_logits(idle_half, 4)).all()
+    assert cscv_logits(idle_half, 4) == pytest.approx(logits)

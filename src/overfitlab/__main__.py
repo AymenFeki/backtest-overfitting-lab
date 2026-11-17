@@ -122,7 +122,7 @@ def run_all(quick: bool, jobs: int) -> None:
     run_agent_experiment(quick, jobs)
 
 
-def run_agent_experiment(quick: bool, jobs: int) -> None:
+def run_agent_experiment(quick: bool, jobs: int, stored_truth: bool = False) -> None:
     """Experiment 1 with the LLM agent, from stored replies (no model call)."""
     out = Path("results/quick" if quick else "results")
     model = Model(cfg.AGENT_PROVIDER, cfg.API_MODEL)
@@ -132,8 +132,11 @@ def run_agent_experiment(quick: bool, jobs: int) -> None:
     runs = score_runs(model, n_seeds, jobs)
     print(f"agent: {len(runs)} runs replayed and scored, {time.time() - start:.0f}s")
     start = time.time()
-    truth = agent_truth(runs, 10 if quick else cfg.TRUTH_PATHS, jobs)
-    truth.to_csv(out / "exp1_agent_truth.csv", index=False, float_format="%.4f")
+    if stored_truth:  # the truth depends on the strategies only, not the filters
+        truth = pd.read_csv(out / "exp1_agent_truth.csv")
+    else:
+        truth = agent_truth(runs, 10 if quick else cfg.TRUTH_PATHS, jobs)
+        truth.to_csv(out / "exp1_agent_truth.csv", index=False, float_format="%.4f")
     print(f"agent truth: {len(truth)} strategies, {time.time() - start:.0f}s")
 
     per_run = pd.DataFrame(
@@ -284,6 +287,11 @@ def main() -> None:
     parser.add_argument("--model", help="model name; default from the config")
     parser.add_argument("--live", action="store_true", help="allow new model calls")
     parser.add_argument(
+        "--stored-truth",
+        action="store_true",
+        help="agent: reuse exp1_agent_truth.csv instead of simulating it again",
+    )
+    parser.add_argument(
         "--history", default=cfg.AGENT_HISTORY, choices=["compact", "transcript"]
     )
     args = parser.parse_args()
@@ -294,7 +302,7 @@ def main() -> None:
     elif args.command == "generate":  # the only command that calls the API
         generate(Model(cfg.AGENT_PROVIDER, cfg.API_MODEL))
     elif args.command == "agent":
-        run_agent_experiment(args.quick, args.jobs)
+        run_agent_experiment(args.quick, args.jobs, args.stored_truth)
     else:
         default = cfg.LOCAL_MODEL if args.provider == "ollama" else cfg.API_MODEL
         pilot(Model(args.provider, args.model or default), args.live, args.history)
