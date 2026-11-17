@@ -75,6 +75,24 @@ def grid() -> list[Strategy]:
     return out
 
 
+def grid_neighbours() -> list[list[int]]:
+    """For each grid strategy, the positions of its close relatives in `grid()`.
+
+    Relatives are the same rule traded the other way round, and the rule of
+    the same family with the next shorter or next longer setting, in the same
+    direction. This is the "small change" a researcher makes when tuning.
+    """
+    out = []
+    for index in range(2 * len(_RULES)):
+        rule, direction = divmod(index, 2)
+        near = [2 * rule + (1 - direction)]
+        for other in (rule - 1, rule + 1):
+            if 0 <= other < len(_RULES) and _RULES[other][0] is _RULES[rule][0]:
+                near.append(2 * other + direction)
+        out.append(near)
+    return out
+
+
 def oracle(spec: cfg.WorldSpec) -> Strategy:
     """The strategy that trades the planted rule itself.
 

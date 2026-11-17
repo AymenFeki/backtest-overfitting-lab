@@ -19,9 +19,14 @@ is shown the reason and may send a corrected version, up to two times. Only
 the final version is the round's trial. Code that failed was never backtested,
 so the model learned nothing about the data from it and it does not count as
 a trial for the multiple-testing corrections.
+
+Experiments 2 and 3 give the model more feedback than the research Sharpe.
+They pass their own system prompt and a `Column`: one more column in the
+table of past rounds (compact history only).
 """
 
 import re
+from collections.abc import Callable
 from dataclasses import dataclass
 
 import numpy as np
@@ -91,6 +96,14 @@ class Trial:
     failures: list[str]  # why each failed attempt of this round was rejected
 
 
+@dataclass(frozen=True)
+class Column:
+    """One more column in the agent's table of past rounds."""
+
+    header: str
+    cells: Callable[[list[Trial]], list[str]]  # the text for each round so far
+
+
 def market_summary(prices: pd.DataFrame) -> str:
     """What the agent is told about the data before its first round."""
     returns = prices.iloc[: cfg.N_RESEARCH].pct_change().dropna()
@@ -128,18 +141,21 @@ def _research_sharpe(trial: Trial) -> float:
     return float(sharpe(trial.returns.iloc[: cfg.N_RESEARCH]))
 
 
-def history_table(trials: list[Trial]) -> str:
+def history_table(trials: list[Trial], column: Column | None = None) -> str:
     """All past rounds as the agent sees them in compact mode."""
     if not trials:
         return "No rounds yet."
+    extra = f"{column.header} | " if column else ""
+    cells = column.cells(trials) if column else [""] * len(trials)
     lines = [
         "Your rounds so far (Sharpe ratio after costs on the backtest):",
-        "round | status | Sharpe | hypothesis",
+        f"round | status | Sharpe | {extra}hypothesis",
     ]
-    for t in trials:
+    for t, cell in zip(trials, cells, strict=True):
         score = "-" if t.returns is None else f"{_research_sharpe(t):.2f}"
         status = "ok" if t.status == "ok" else "failed"
-        lines.append(f"{t.round} | {status} | {score} | {t.hypothesis[:150]}")
+        cell = f"{cell} | " if column else ""
+        lines.append(f"{t.round} | {status} | {score} | {cell}{t.hypothesis[:150]}")
     if trials[-1].returns is None:
         lines.append(f"Round {trials[-1].round} failed with: {trials[-1].status}.")
     return "\n".join(lines)
@@ -152,8 +168,12 @@ def run_agent(
     rounds: int = cfg.AGENT_ROUNDS,
     live: bool = False,
     history: str = cfg.AGENT_HISTORY,
+    system: str = SYSTEM,
+    column: Column | None = None,
 ) -> list[Trial]:
     """One agent, one world: `rounds` proposals, each with its backtest."""
+    if column and history != "compact":
+        raise ValueError("an extra column needs the compact history")
     trials: list[Trial] = []
     messages: list[dict] = []
     summary = market_summary(prices)
@@ -162,7 +182,7 @@ def run_agent(
         ask = f"Round {number} of {rounds}: propose a new strategy."
         if history == "compact":
             messages = []  # a fresh conversation every round
-            ask = f"{summary}\n\n{history_table(trials)}\n\n{ask}"
+            ask = f"{summary}\n\n{history_table(trials, column)}\n\n{ask}"
         else:
             ask = f"{note} {ask}"
         replies: list[Reply] = []
@@ -170,7 +190,7 @@ def run_agent(
         for attempt in range(1 + REPAIRS):
             messages.append({"role": "user", "content": ask})
             call_seed = seed * 1000 + number * 10 + attempt
-            replies.append(complete(model, SYSTEM, messages, call_seed, live))
+            replies.append(complete(model, system, messages, call_seed, live))
             messages.append({"role": "assistant", "content": replies[-1].text})
             hypothesis, code = parse(replies[-1].text)
             returns, status = None, "no Python code block in the reply"

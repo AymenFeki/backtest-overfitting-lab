@@ -15,7 +15,7 @@ import numpy as np
 import pandas as pd
 
 from . import config as cfg
-from .agent import run_agent
+from .agent import Trial, run_agent
 from .backtest import net_returns, sharpe
 from .experiments import _parallel
 from .llm import Model, spent_usd
@@ -51,19 +51,18 @@ def generate(model: Model, n_seeds: int = cfg.AGENT_SEEDS) -> None:
         )
 
 
-def _score_run(task: tuple[int, int, Model]) -> dict:
-    """One world: replay the agent from stored replies and score its strategies."""
-    spec_index, index, model = task
-    prices = world(cfg.SPECS[spec_index], index)
-    trials = run_agent(prices, model, agent_seed(spec_index, index))
+def score_trials(spec_index: int, index: int, trials: list[Trial]) -> dict:
+    """Every filter's score for the usable strategies of one agent run."""
     usable = [t for t in trials if t.status == "ok"]
     returns = pd.DataFrame({t.round: t.returns for t in usable})
     scores = np.full((len(FILTERS), len(usable)), -np.inf)
-    distinct = 0
+    distinct, alike = 0, np.nan
     if len(usable) >= 2:  # the corrections need something to correct for
         scores = np.array([f.score(returns) for f in FILTERS])
-        copies = np.triu(returns.corr().abs().to_numpy(), k=1) > 0.99
-        distinct = int((~copies.any(axis=0)).sum())
+        pairs = np.triu_indices(len(usable), k=1)
+        related = returns.corr().abs().to_numpy()
+        distinct = int((~(np.triu(related, k=1) > 0.99).any(axis=0)).sum())
+        alike = float(related[pairs].mean())
     return {
         "spec": spec_index,
         "world": index,
@@ -76,9 +75,18 @@ def _score_run(task: tuple[int, int, Model]) -> dict:
             f.startswith("look-ahead") for t in trials for f in t.failures
         ),
         "distinct": distinct,
+        "mean_abs_correlation": alike,
         "cost": sum(r.cost_usd for t in trials for r in t.replies),
         "seconds": sum(r.seconds for t in trials for r in t.replies),
     }
+
+
+def _score_run(task: tuple[int, int, Model]) -> dict:
+    """One world: replay the agent from stored replies and score its strategies."""
+    spec_index, index, model = task
+    prices = world(cfg.SPECS[spec_index], index)
+    trials = run_agent(prices, model, agent_seed(spec_index, index))
+    return score_trials(spec_index, index, trials)
 
 
 def score_runs(

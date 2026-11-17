@@ -191,6 +191,75 @@ Two larger local models could not be tested on a 16 GB laptop: one
 ran it out of memory, one did not load in the installed Ollama version.
 Details: [results/pilot/STATUS.md](results/pilot/STATUS.md).
 
+## Holdout reuse and the Goodhart test (Stage 5)
+
+Results only; the interpretation follows after review. Full note:
+[results/stage5.md](results/stage5.md).
+
+**Experiment 2: a lockbox asked after every round.** An analyst proposes a
+strategy per round for 40 rounds and after each asks how it did in the lockbox
+(the last 3 years). Whatever answered best so far is the candidate; a
+discovery is claimed when the answer is above 0.95, the bar of a one-sided 5%
+test on 3 years. The lockbox is either opened once at the end (the correct
+use), reported after every round, or asked through Thresholdout (Dwork et al.
+2015: it answers with the research Sharpe unless the lockbox disagrees by more
+than a noisy threshold, then with a noisy lockbox value, within a budget).
+Declared Thresholdout settings: threshold 1 standard error of the lockbox
+Sharpe (0.58), noise rate a twenty-fifth of that, budget 10.
+
+Share of no-signal worlds with a (false) claim after 40 rounds, 95% intervals
+over worlds. "Told": the declared rule, on the answer the analyst got.
+"Actual": the candidate's real lockbox Sharpe above 0.95, added afterwards.
+
+| Analyst | Lockbox opened once | Reported every round, told = actual | Thresholdout, told | Thresholdout, actual |
+|---|---|---|---|---|
+| Hill-climber over the 76 grid strategies, 200 worlds | 1.5 [0.0, 3.5] | 41.5 [35.0, 48.5] | 32.0 [25.5, 39.0] | 31.0 [24.5, 37.5] |
+| Haiku agent, 15 worlds per arm | (not run) | 33.3 [13.3, 60.0] | 13.3 [0.0, 33.3] | 13.3 [0.0, 33.3] |
+
+- **The agent's two arms do not differ significantly.** They ran on the same
+  15 worlds: reuse claimed in 5, Thresholdout in 2, and the 3 worlds where
+  they disagree all go the same way. Exact McNemar test on those 3: p = 0.25,
+  on either rule.
+- **"Opened once" is below 5% mostly because of costs.** 3 claims in 200
+  worlds would be unlikely at a true 5% rate (p = 0.009), but the bar is the
+  5% point for a true Sharpe of 0, and the chosen strategies lose 0.09 a year
+  after costs. For them the expected rate is 3.7%, and 3 of 200 is within
+  chance (p = 0.057). At zero cost the same strategies give 5 claims of 200.
+
+- Thresholdout answered from the lockbox in 45% of the hill-climber's answered
+  rounds and 43% of the agent's. Its budget ran out in 83% of hill-climber
+  runs (median round 21) and 9 of 15 agent runs (median round 16).
+- Sensitivity runs, hill-climber only, added after the first results: noise
+  at the paper's scale (noise rate 2 standard errors: 90% false claims on the
+  told rule, 7.0% [3.5, 10.5] on the actual lockbox; the paper's ratios,
+  threshold 4 and noise 1 standard error: 54.5% and 12.5%), and a 12-year
+  lockbox (reported every round 33.5%, Thresholdout 24.0% told and 18.0%
+  actual, opened once 2.0%). Thresholds 0.5 to 4 and budgets 5 and 40 are in
+  the note, as are the medium-momentum worlds.
+
+![Holdout reuse](results/figures/exp2_holdout_reuse.png)
+
+**Experiment 3: told the filters or not.** On 15 no-signal worlds, 20 rounds,
+two agent arms see the same table of which of six anonymised checks (A to F:
+holdout, walk-forward, deflated Sharpe, CPCV, Benjamini-Hochberg,
+Romano-Wolf) each past strategy passes, with the same goal; only one arm is
+told what the checks are.
+
+- **A documented null.** No strategy passed any check in any of the 600
+  prompts, so both arms saw "none" in every row and got no information to
+  act on; the experiment cannot show whether knowing the checks helps an
+  agent game them. Costs are not the reason: at zero cost the same strategies
+  still pass no check and no filter. Twenty noise strategies rarely reach
+  these bars at all. It was not re-run; a fair test needs checks that noise
+  passes often enough to learn from.
+- No filter accepted any strategy in either arm (the Stage 4 agent, which saw
+  only its Sharpe ratios, had one world of 15 passing CPCV and one passing
+  Romano-Wolf).
+- The told arm's strategies were slightly less correlated with each other
+  (mean absolute correlation 0.32 against 0.38; paired difference -0.06
+  [-0.13, 0.01]).
+
+**Cost:** $0.79 for 1,900 calls; $1.63 of the $2.00 cap spent in all.
 
 ## Setup and usage
 
@@ -200,6 +269,8 @@ uv run pytest -q
 uv run python -m overfitlab all          # every experiment, from stored model replies
 uv run python -m overfitlab all --quick  # small check run, writes to results/quick
 uv run python -m overfitlab agent        # only the agent experiment, from stored replies
+uv run python -m overfitlab exp2         # holdout reuse: hill-climber and agent
+uv run python -m overfitlab exp3         # told against not told
 ```
 
 `all` makes no model call. The one command that does is
@@ -219,6 +290,17 @@ All randomness derives from one master seed (`20261116` in
   the signal back up matches the planted rule's Sharpe, not how hard the world
   is for the grid; the comparison is clean for one of three signal types.
 - **Daily data only.**
+- **Thresholdout runs outside its guarantee.** The theorem needs statistics
+  bounded in [0, 1] and a holdout far larger than the budget over the squared
+  accuracy; a Sharpe ratio on 756 days is neither. The settings were chosen in
+  standard errors before the runs, and the paper's own figures (10,000
+  samples, threshold 0.04, noise 0.01) come from a summary of the paper, not
+  from the original.
+- **Experiment 3 gave the agent nothing to game.** No strategy ever passed a
+  check, so the feedback both arms saw was constant. The design does not test
+  what happens when the checks can be passed.
+- **Small agent samples.** 15 worlds per arm in Experiments 2 and 3: one world
+  moves a share by 6.7 points.
 - **Two methods rest on secondary sources.** The CPCV chapter (Lopez de Prado
   2018) and the paper behind the effective number of trials (Galwey 2009) are
   not freely available. CPCV follows a library's documentation and my own

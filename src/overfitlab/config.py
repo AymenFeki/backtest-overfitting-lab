@@ -7,7 +7,15 @@ import numpy as np
 
 # --- reproducibility -------------------------------------------------------
 MASTER_SEED = 20261116
-_STREAMS = {"world": 0, "truth": 1, "bootstrap": 2, "calibrate": 3, "romano_wolf": 4}
+_STREAMS = {
+    "world": 0,
+    "truth": 1,
+    "bootstrap": 2,
+    "calibrate": 3,
+    "romano_wolf": 4,
+    "thresholdout": 5,
+    "hill_climb": 6,
+}
 
 
 def seed(stream: str, *key: int) -> np.random.SeedSequence:
@@ -156,3 +164,48 @@ API_BUDGET_USD = 2.00  # hard cap on all API calls together
 AGENT_PROVIDER = "anthropic"  # bulk runs; the local models failed the pilot
 AGENT_WORLDS = ("no_signal", "tsmom_medium", "xsmom_medium", "meanrev_medium")
 AGENT_SEEDS = 30
+
+# --- holdout reuse and the Goodhart test (Stage 5) -------------------------
+# Experiment 2: an analyst asks for a strategy's lockbox Sharpe after every
+# round and keeps what scores best. A discovery is claimed when the answer
+# clears the bar of the one-sided 5% test. The standard error of an annualised
+# Sharpe near zero is 1 / sqrt(years), so with a 3-year lockbox it is 0.58 and
+# the bar is 1.645 x 0.58 = 0.95.
+N_LOCKBOX = N_DAYS - N_RESEARCH
+LOCKBOX_SHARPE_SE = float(np.sqrt(PERIODS_PER_YEAR / N_LOCKBOX))
+CLAIM_SHARPE = round(1.645 * LOCKBOX_SHARPE_SE, 2)
+REUSE_ROUNDS = 40
+REUSE_WORLDS = ("no_signal", "tsmom_medium")  # hill-climber; the agent: no_signal
+CLIMB_JUMP = 0.2  # chance that the hill-climber tries an unrelated strategy
+# Thresholdout settings, in units of the lockbox Sharpe's standard error.
+# Threshold: 1 standard error. The paper's experiment used 0.04 with 10,000
+# samples, 4 standard errors of its statistic, and the overfitting it had to
+# catch was far wider than that. Here a lucky backtest beats its lockbox value
+# by 2 to 3 standard errors at most, so a threshold of 4 would never trigger
+# (it is in the sensitivity runs to show this). Noise rate: a twenty-fifth of
+# the threshold, which makes the noise on the comparison (Laplace scales 2 and
+# 4 times the rate) about a quarter of the threshold, the ratio of noise to
+# threshold in the paper's experiment. Budget: 10 answers from the lockbox.
+THRESHOLDOUT_T = 1.0
+THRESHOLDOUT_SIGMA_SHARE = 1 / 25  # noise rate as a share of the threshold
+THRESHOLDOUT_BUDGET = 10
+THRESHOLDOUT_T_SWEEP = (0.5, 2.0, 4.0)  # sensitivity, hill-climber only
+THRESHOLDOUT_BUDGET_SWEEP = (5, 40)
+# Noise at the paper's scale, hill-climber only. The rate above gives answers
+# a noise of a few hundredths of a standard error; the paper's experiment added
+# noise of 0.01 to answers whose standard error was also about 0.01 (as read
+# from a summary of the paper, see thresholdout.py). Two variants: a noise rate
+# of 2 standard errors at the declared threshold, and the paper's own ratios
+# (threshold 4, noise rate 1).
+THRESHOLDOUT_NOISE_SE = 2.0
+THRESHOLDOUT_PAPER = (4.0, 1.0)  # threshold, noise rate, in standard errors
+# A longer lockbox for the hill-climber: 12 years instead of 3, which halves the
+# standard error (the bar for a claim drops to 0.47). Same worlds, simulated
+# for longer: the first 10 years are identical, so the search sees the same
+# research Sharpe ratios.
+LONG_LOCKBOX_DAYS = 4 * N_LOCKBOX
+REUSE_AGENT_SEEDS = 15  # agent runs per arm
+# Experiment 3: on no-signal worlds the agent sees, for every strategy, which
+# checks it passes. One arm is also told what the checks are.
+GOODHART_CHECKS = ("holdout", "walk_forward", "dsr", "cpcv", "bh", "romano_wolf")
+GOODHART_SEEDS = 15
