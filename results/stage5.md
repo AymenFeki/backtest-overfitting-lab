@@ -153,6 +153,8 @@ worlds give the same picture for every variant; all rows are in
 
 Percent of worlds with a false claim; 6.7% is one world of 15.
 
+![Holdout reuse](figures/exp2_holdout_reuse.png)
+
 **Paired comparison.** Both arms ran on the same 15 worlds, so they are
 compared world by world with an exact McNemar test (`exp2_agent_paired.csv`).
 After 40 rounds, reuse made a false claim in 5 worlds and Thresholdout in 2.
@@ -206,6 +208,8 @@ worlds, all in the same direction, would be needed for p below 0.05.
   "out-of-sample", "stable" or "regime" appear in 16.3% of the told arm's
   hypotheses and 10.0% of the not-told arm's; words about multiple testing or
   overfitting in 2.7% of both.
+
+![Told against not told](figures/exp3_goodhart.png)
 
 ### A documented null, and why
 

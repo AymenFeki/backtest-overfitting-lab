@@ -139,7 +139,9 @@ rejection for them and a false discovery in this table.
 
 Not one strategy passed in 2,600 worlds, at any cut down to 0.5, even where
 the planted Sharpe is 2. This is the formula doing what it says, not a coding
-error: the paper's own example is reproduced to four decimals.
+error: the paper's own example is reproduced to four decimals. With the 2,000
+regime and decay worlds of Stage 3 added, it still passed nothing at its
+conventional cut in all 4,600 worlds (`exp1_grid_points.csv`).
 
 The cause is the benchmark SR_0 = sqrt(V) x 2.43 for 76 trials, where V is the
 variance of the trials' Sharpe ratios. The formula assumes that all trials have

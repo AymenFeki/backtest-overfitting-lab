@@ -39,6 +39,33 @@ Sharpe: median 0.010, largest 0.014, so about 5% of the 0.2 threshold.
   threshold and could be mislabelled; the worst case is 7 of 76 in the
   barely-detectable cross-sectional world.
 
+## How to read the numbers
+
+These definitions hold for every stage.
+
+- **FDR.** In each world, V is the number of accepted strategies that are not
+  real and R the number accepted. The false discovery proportion is
+  V / max(R, 1), so a world where nothing is accepted counts as zero. FDR is
+  its average over worlds.
+- **pFDR** (positive FDR, Storey 2003) is the same average over only the
+  worlds where something was accepted: "when this filter says yes, how often
+  is it wrong?". FDR = pFDR x share of worlds with an acceptance, so a filter
+  that rarely accepts anything can have a low FDR and a high pFDR. Added in
+  Stage 3; see the [Stage 3 note](stage3.md).
+- **Power** is the share of the real strategies that a filter accepts.
+- **The filters test a different hypothesis than the truth label.** Every
+  filter with a test asks "is the mean return above zero?". The truth label
+  asks "is the Sharpe at least 0.2?". A strategy with a true Sharpe of 0.1 is
+  a correct rejection of "mean = 0" and still counts as a false discovery
+  here. This is deliberate (an edge that small is not worth trading), but it
+  means a filter can exceed its nominal 5% without being broken.
+- **The noise worlds are an easier null than "mean = 0".** With no signal a
+  strategy earns nothing before costs and pays costs on every trade, so its
+  true Sharpe is negative: -0.22 on average over the 76 grid strategies, from
+  -0.95 to 0.00. A test of "mean = 0" on them is conservative, so the
+  false-positive rates in the no-signal rows are lower than the same filters
+  would show on strategies with a true mean of exactly zero.
+
 ## Filters at their conventional settings
 
 Naive: research-sample Sharpe at least 1.0. Holdout: same screen, then lockbox

@@ -20,6 +20,33 @@
 - **Intervals:** 95% percentile bootstrap over worlds (30 for the agent, 200 for
   the grid).
 
+## How the agent works
+
+A language model plays the researcher: each round it writes a hypothesis and
+a `positions(prices)` function, the function is checked, run in a sandbox with
+the look-ahead test, backtested by the same engine as the grid, and the model
+is told the result on the research sample.
+
+- **What the agent remembers.** By default every round is a fresh prompt with
+  a table of all its past rounds (hypothesis, status, research-sample Sharpe)
+  and the error of the last round if it failed. It sees every result it ever
+  got, so it stays adaptive. The first version kept one growing conversation
+  with all earlier code instead; a small local model then copied its own
+  mistakes round after round and the prompt reached 14,000 tokens in 20
+  rounds (1,800 with the table). The old mode is still there:
+  `--history transcript`. The price of the table: the agent no longer sees its
+  earlier code, only what each idea was and how it scored.
+- **Repairs.** If a round's code cannot be used (error, look-ahead, a repeat),
+  the model gets the reason and up to two more attempts. Only the final
+  version is a trial. Failed code was never backtested, so it told the model
+  nothing about the data and does not count as a trial for the corrections.
+- **Reproducibility.** Every model reply is stored under a hash of the full
+  request and committed to this repo (`cache/llm/`). Experiments are re-scored
+  from those files without calling a model. For the Claude runs the stored
+  replies are the only reproducibility guarantee: the model accepts neither a
+  seed nor a temperature, so a fresh run would produce different strategies.
+  The files hold the replies, token counts, timing and cost, and nothing else.
+
 ## Usable rounds and look-ahead
 
 | World type | Usable rounds (share, 95% interval) | Calls per round | Look-ahead rejections |
@@ -47,7 +74,8 @@ On average a run held 18.3 distinct strategies out of 20 rounds.
   hypothesis text; one reply can match several). The planted signals are
   textbook ideas and the model proposes them unprompted, so its high share of
   true strategies reflects prior knowledge, not only what it learned from the
-  backtests.
+  backtests. A signal that is in no textbook would be a harder and fairer
+  test.
 - **Best-in-backtest strategy.** The strategy with the highest research
   Sharpe in each run had a mean research Sharpe of 0.41 on no-signal worlds
   (none above 1) and 1.18 to 1.23 on medium worlds, where it was true in 93%
@@ -110,6 +138,8 @@ defined. The agent's 3.3% for CPCV and Romano-Wolf is one world out of 30 each.
 
 An agent FDR of 0.0 has the interval [0.0, 0.0]; the grid's intervals are in
 [exp1_agent_tables.md](exp1_agent_tables.md) and the CSV files.
+
+![Grid search against the LLM agent](figures/exp1_agent_vs_grid.png)
 
 ## Costs on no-signal worlds
 
@@ -181,6 +211,32 @@ which writes [zero_cost.md](zero_cost.md).
   published deflated Sharpe and PBO stay below 1%), because many of the
   agent's strategies have true Sharpes between 0.2 and 0.5. Full table:
   `exp1_agent_points.csv`.
+
+## Which model, and why it changed
+
+The plan was to run the bulk of the agent experiments on a free local model
+and add a small comparison on Claude Haiku 5.5. The local models did not get
+through the gate set beforehand (about 80% of rounds must give a usable,
+look-ahead-free strategy), so the bulk ran on Haiku under a hard cap of
+$2.00 for all API calls, checked in code before every call.
+
+Pilot: one agent run of 20 rounds on each of two worlds (no signal, medium
+momentum), same prompt for every model.
+
+| Model | Usable rounds | Look-ahead rejections | Distinct strategies | Seconds per round | Cost |
+|---|---|---|---|---|---|
+| Claude Haiku 5.5 | 40 of 40 (100%) | 0 | 38 | 2.7 | $0.014 |
+| qwen2.5-coder:7b (local, 4.7 GB) | 4 of 40 (10%) | 19 | 4 | 39 | free |
+| mimo-v2.6:9b (local, 6.6 GB), first world only | 3 of 20 (15%) | 10 | 3 | 50 | free |
+
+Most failed rounds of the local models ended in a plain error: weights of the
+wrong shape, or pandas arguments that do not exist (28 of the 7B model's 36
+failed rounds, 14 of mimo's 17). The second cause was look-ahead: dividing by
+a full-sample sum, which the automated test rejected (7 and 3 failed rounds;
+19 and 10 rejected attempts when repairs are counted).
+Two larger local models could not be tested on a 16 GB laptop: one
+ran it out of memory, one did not load in the installed Ollama version.
+Details: [pilot/STATUS.md](pilot/STATUS.md).
 
 ## PBO correction (2026-11-17)
 
