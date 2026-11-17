@@ -331,7 +331,7 @@ def goodhart_figure(summary: pd.DataFrame, path: Path) -> None:
             label=label,
         )
     ax.set_yticks(height, labels)
-    ax.set_xlim(-0.05, max(1.0, 1.1 * summary.accepted_high.max()))
+    ax.set_xlim(-0.02, max(0.3, 1.1 * summary.accepted_high.max()))
     ax.set_xlabel("Accepted strategies per world, all of them false", color=MUTED)
     ax.legend(
         frameon=False, fontsize=9, ncol=3, loc="lower center", bbox_to_anchor=(0.4, 1.0)

@@ -89,7 +89,7 @@ def markdown_tables(points: pd.DataFrame, tables: dict = TABLES) -> str:
 
 
 def run_all(quick: bool, jobs: int) -> None:
-    """Truth, Experiment 1 with grid search, tables and figure."""
+    """Every experiment: truth, Experiment 1 (grid and agent), 2 and 3."""
     out = Path("results/quick" if quick else "results")
     (out / "figures").mkdir(parents=True, exist_ok=True)
     n_paths = 10 if quick else cfg.TRUTH_PATHS
@@ -123,6 +123,8 @@ def run_all(quick: bool, jobs: int) -> None:
     gaps.to_csv(out / "exp1_cpcv_gap.csv", index=False, float_format="%.4f")
     print(f"results written to {out}/")
     run_agent_experiment(quick, jobs)
+    run_reuse(quick, jobs)
+    run_goodhart(quick, jobs)
 
 
 def run_agent_experiment(quick: bool, jobs: int) -> None:
@@ -184,6 +186,8 @@ def run_reuse(quick: bool, jobs: int) -> None:
         for threshold in cfg.TRUTH_THRESHOLDS
     )
     climber.to_csv(out / "exp2_climber.csv", index=False, float_format="%.4f")
+    sources = holdout_reuse.answer_sources(table)
+    sources.to_csv(out / "exp2_climber_sources.csv", index=False, float_format="%.4f")
     print(f"hill-climber: {table.world.nunique()} worlds, {time.time() - start:.0f}s")
 
     model = Model(cfg.AGENT_PROVIDER, cfg.API_MODEL)
@@ -193,6 +197,8 @@ def run_reuse(quick: bool, jobs: int) -> None:
     rounds.to_csv(out / "exp2_agent_rounds.csv", index=False, float_format="%.4f")
     agent = holdout_reuse.summarise_reuse(rounds)
     agent.to_csv(out / "exp2_agent.csv", index=False, float_format="%.4f")
+    sources = holdout_reuse.answer_sources(rounds)
+    sources.to_csv(out / "exp2_agent_sources.csv", index=False, float_format="%.4f")
     main = climber[
         (climber.true_threshold == cfg.TRUE_SHARPE_MIN)
         & (climber.world_type == "no_signal")

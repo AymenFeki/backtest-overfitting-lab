@@ -1,0 +1,3 @@
+world_type,mechanism,n_worlds,usable_per_run,answered_per_run,from_lockbox_per_run,share_from_lockbox,share_low,share_high,runs_budget_spent,budget_round_median,budget_round_min,budget_round_max
+no_signal,reuse,15,39.1333,39.1333,39.1333,1.0000,1.0000,1.0000,0.0000,,,
+no_signal,thresholdout,15,39.8667,26.4000,8.8000,0.4282,0.3176,0.5429,0.6000,16.0000,13.0000,23.0000

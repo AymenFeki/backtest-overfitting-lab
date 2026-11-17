@@ -4,17 +4,20 @@ import pandas as pd
 from overfitlab import agent, holdout_reuse
 from overfitlab import config as cfg
 from overfitlab.holdout_reuse import (
+    MECHANISMS,
     ONCE,
     REUSE,
     THRESHOLDOUT,
     Mechanism,
     agent_runs,
+    answer_sources,
     candidates,
     hill_climb,
     summarise_reuse,
 )
 from overfitlab.llm import Model, Reply
 from overfitlab.strategies import grid, grid_neighbours
+from overfitlab.worlds import world
 
 LINE = [[j for j in (i - 1, i + 1) if 0 <= j < 30] for i in range(30)]
 
@@ -140,6 +143,59 @@ def test_thresholdout_stops_answering_when_its_budget_is_used_up():
     for _, run in table.groupby("world"):
         asked = run.answer.notna().to_numpy()
         assert not asked[np.argmin(asked) :].any()  # no answer after the first gap
+
+
+def test_answer_sources_count_lockbox_answers_and_find_the_spent_budget():
+    named = {m.name: m for m in MECHANISMS}
+    mechanisms = [ONCE, REUSE, named["thresholdout_b5"]]
+    table = _noise_table(mechanisms, 30)
+    out = answer_sources(table).set_index("mechanism")
+    assert out.share_from_lockbox["once"] == 0.0
+    assert out.share_from_lockbox["reuse"] == 1.0
+    assert 0.0 < out.share_from_lockbox["thresholdout_b5"] < 1.0
+    assert np.isnan(out.budget_round_median["reuse"])
+    # Check one run by hand: the budget is spent at the 5th lockbox answer,
+    # and nothing is answered after it.
+    for _, run in table[table.mechanism == "thresholdout_b5"].groupby("world"):
+        from_lockbox = run.answer.notna() & (run.answer != run.research)
+        if from_lockbox.sum() == 5:
+            spent = run["round"][from_lockbox].iloc[4]
+            assert run.answer[run["round"] > spent].isna().all()
+            break
+    else:
+        raise AssertionError("no run spent its budget")
+    assert out.runs_budget_spent["thresholdout_b5"] > 0
+
+
+def test_a_longer_lockbox_extends_the_same_world():
+    # The search must see the same research Sharpe ratios with either
+    # lockbox, so the longer world has to start with the shorter one.
+    long = next(m for m in MECHANISMS if m.name == "thresholdout_long")
+    assert np.isclose(long.se, THRESHOLDOUT.se / 2)
+    assert long.claim == 0.47 and THRESHOLDOUT.claim == cfg.CLAIM_SHARPE
+    for spec in [cfg.SPECS[0], next(s for s in cfg.SPECS if s.name == "tsmom_medium")]:
+        short = world(spec, 3)
+        longer = world(spec, 3, cfg.N_RESEARCH + cfg.LONG_LOCKBOX_DAYS)
+        assert len(longer) == cfg.N_RESEARCH + cfg.LONG_LOCKBOX_DAYS
+        pd.testing.assert_frame_equal(longer.iloc[: len(short)], short)
+
+
+def test_claims_on_the_actual_lockbox_sharpe():
+    table = pd.DataFrame(
+        {
+            "world_type": "w",
+            "world": 0,
+            "mechanism": "thresholdout",
+            "round": [1, 2],
+            "answer": [1.2, 0.3],  # told 1.2 about a strategy whose lockbox is 0.5
+            "research": [0.0, 0.3],
+            "lockbox": [0.5, 2.0],
+            "true_sharpe": [0.0, 0.0],
+        }
+    )
+    out = candidates(table, threshold=0.2)
+    assert list(out.false_claim) == [True, True]
+    assert list(out.lockbox_false_claim) == [False, False]
 
 
 def test_candidates_follow_the_highest_answer_and_judge_it_by_the_truth():

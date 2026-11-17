@@ -191,6 +191,19 @@ THRESHOLDOUT_SIGMA_SHARE = 1 / 25  # noise rate as a share of the threshold
 THRESHOLDOUT_BUDGET = 10
 THRESHOLDOUT_T_SWEEP = (0.5, 2.0, 4.0)  # sensitivity, hill-climber only
 THRESHOLDOUT_BUDGET_SWEEP = (5, 40)
+# Noise at the paper's scale, hill-climber only. The rate above gives answers
+# a noise of a few hundredths of a standard error; the paper's experiment added
+# noise of 0.01 to answers whose standard error was also about 0.01 (as read
+# from a summary of the paper, see thresholdout.py). Two variants: a noise rate
+# of 2 standard errors at the declared threshold, and the paper's own ratios
+# (threshold 4, noise rate 1).
+THRESHOLDOUT_NOISE_SE = 2.0
+THRESHOLDOUT_PAPER = (4.0, 1.0)  # threshold, noise rate, in standard errors
+# A longer lockbox for the hill-climber: 12 years instead of 3, which halves the
+# standard error (the bar for a claim drops to 0.47). Same worlds, simulated
+# for longer: the first 10 years are identical, so the search sees the same
+# research Sharpe ratios.
+LONG_LOCKBOX_DAYS = 4 * N_LOCKBOX
 REUSE_AGENT_SEEDS = 15  # agent runs per arm
 # Experiment 3: on no-signal worlds the agent sees, for every strategy, which
 # checks it passes. One arm is also told what the checks are.

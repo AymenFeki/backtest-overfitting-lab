@@ -24,6 +24,7 @@ costs on average and less than zero after.
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from functools import partial
 
 import numpy as np
 import pandas as pd
@@ -43,12 +44,28 @@ Ask = Callable[[float, float], float | None]  # (research, lockbox) -> answer
 
 @dataclass(frozen=True)
 class Mechanism:
-    """One way of answering the analyst's questions about the lockbox."""
+    """One way of answering the analyst's questions about the lockbox.
+
+    Threshold and noise rate are in standard errors of the lockbox Sharpe;
+    a noise rate of None means `THRESHOLDOUT_SIGMA_SHARE` of the threshold.
+    """
 
     name: str
     kind: str  # "once", "reuse" or "thresholdout"
-    threshold: float = cfg.THRESHOLDOUT_T  # in lockbox standard errors
+    threshold: float = cfg.THRESHOLDOUT_T
     budget: int = cfg.THRESHOLDOUT_BUDGET
+    sigma: float | None = None
+    lockbox_days: int = cfg.N_LOCKBOX
+
+    @property
+    def se(self) -> float:
+        """Standard error of an annualised Sharpe near zero on the lockbox."""
+        return float(np.sqrt(cfg.PERIODS_PER_YEAR / self.lockbox_days))
+
+    @property
+    def claim(self) -> float:
+        """The bar for a claim: the one-sided 5% test on the lockbox."""
+        return round(1.645 * self.se, 2)
 
     def ask(self, rng: np.random.Generator) -> Ask:
         """A fresh answering function for one world."""
@@ -56,14 +73,17 @@ class Mechanism:
             return lambda research, lockbox: research
         if self.kind == "reuse":
             return lambda research, lockbox: lockbox
-        t = self.threshold * cfg.LOCKBOX_SHARPE_SE
-        guard = Thresholdout(t, t * cfg.THRESHOLDOUT_SIGMA_SHARE, self.budget, rng)
-        return guard.answer
+        t = self.threshold * self.se
+        sigma = t * cfg.THRESHOLDOUT_SIGMA_SHARE
+        if self.sigma is not None:
+            sigma = self.sigma * self.se
+        return Thresholdout(t, sigma, self.budget, rng).answer
 
 
 ONCE = Mechanism("once", "once")
 REUSE = Mechanism("reuse", "reuse")
 THRESHOLDOUT = Mechanism("thresholdout", "thresholdout")
+_LONG = cfg.LONG_LOCKBOX_DAYS
 MECHANISMS = (
     [ONCE, REUSE, THRESHOLDOUT]
     + [
@@ -74,8 +94,26 @@ MECHANISMS = (
         Mechanism(f"thresholdout_b{b}", "thresholdout", budget=b)
         for b in cfg.THRESHOLDOUT_BUDGET_SWEEP
     ]
+    + [
+        Mechanism(
+            "thresholdout_noise2", "thresholdout", sigma=cfg.THRESHOLDOUT_NOISE_SE
+        ),
+        Mechanism(
+            "thresholdout_paper",
+            "thresholdout",
+            threshold=cfg.THRESHOLDOUT_PAPER[0],
+            sigma=cfg.THRESHOLDOUT_PAPER[1],
+        ),
+        Mechanism("once_long", "once", lockbox_days=_LONG),
+        Mechanism("reuse_long", "reuse", lockbox_days=_LONG),
+        Mechanism("thresholdout_long", "thresholdout", lockbox_days=_LONG),
+    ]
 )
 AGENT_MECHANISMS = [REUSE, THRESHOLDOUT]
+# The agent's noise streams are numbered after the first 8 mechanisms. The
+# number is fixed: it set the answers the agent saw when its replies were
+# generated, and another number would change the prompts.
+_AGENT_NOISE_OFFSET = 8
 
 
 # --- the hill-climber --------------------------------------------------------
@@ -113,23 +151,34 @@ def hill_climb(
     return proposals, answers
 
 
+def _ask_strategy(
+    answer: Ask, research: np.ndarray, lockbox: np.ndarray, i: int
+) -> float | None:
+    return answer(research[i], lockbox[i])
+
+
 def _climb_world(
     spec_index: int, index: int, mechanisms: list[Mechanism], rounds: int
 ) -> list[dict]:
     """The hill-climber in one world under each mechanism: one row per round."""
     spec = cfg.SPECS[spec_index]
-    returns = run_all(world(spec, index), GRID)
-    research = sharpe(returns.iloc[: cfg.N_RESEARCH])
-    lockbox = sharpe(returns.iloc[cfg.N_RESEARCH :])
+    sharpes = {}  # lockbox length: (research Sharpe, lockbox Sharpe) per strategy
+    for days in sorted({m.lockbox_days for m in mechanisms}):
+        returns = run_all(world(spec, index, cfg.N_RESEARCH + days), GRID)
+        sharpes[days] = (
+            sharpe(returns.iloc[: cfg.N_RESEARCH]),
+            sharpe(returns.iloc[cfg.N_RESEARCH :]),
+        )
     rows = []
     for m_index, mechanism in enumerate(mechanisms):
+        research, lockbox = sharpes[mechanism.lockbox_days]
         # The search uses the same random numbers under every mechanism, so
         # differences come from the answers alone.
         search = np.random.default_rng(cfg.seed("hill_climb", spec_index, index))
         noise = cfg.seed("thresholdout", spec_index, index, m_index)
         answer = mechanism.ask(np.random.default_rng(noise))
         proposals, answers = hill_climb(
-            lambda i, answer=answer: answer(research[i], lockbox[i]),
+            partial(_ask_strategy, answer, research, lockbox),
             grid_neighbours(),
             rounds,
             search,
@@ -229,7 +278,7 @@ def _agent_run(task: tuple[Model, int, int, bool]) -> pd.DataFrame:
     model, m_index, index, live = task
     mechanism = AGENT_MECHANISMS[m_index]
     # Its own noise stream, apart from the hill-climber's.
-    noise = cfg.seed("thresholdout", 0, index, len(MECHANISMS) + m_index)
+    noise = cfg.seed("thresholdout", 0, index, _AGENT_NOISE_OFFSET + m_index)
     lockbox = LockboxAnswers(mechanism.ask(np.random.default_rng(noise)))
     trials = run_agent(
         world(cfg.SPECS[0], index),
@@ -302,23 +351,30 @@ def candidates(table: pd.DataFrame, threshold: float) -> pd.DataFrame:
     the answers are research Sharpe ratios and the claim rests on the
     candidate's lockbox Sharpe, read one time. A candidate is real when its
     true Sharpe is at least `threshold`; in a no-signal world none is.
+
+    Second rule, `lockbox_*_claim`: the candidate's actual lockbox Sharpe
+    clears the bar, whatever the analyst was told. Under "once" the two rules
+    are the same.
     """
-    kinds = {m.name: m.kind for m in MECHANISMS}
+    by_name = {m.name: m for m in MECHANISMS}
     rows = []
     for (world_type, index, name), run in table.groupby(
         ["world_type", "world", "mechanism"], sort=False
     ):
+        mechanism = by_name[name]
         best, answered = None, 0
         for row in run.sort_values("round").itertuples():
             if not np.isnan(row.answer):
                 answered += 1
                 if best is None or row.answer > best.answer:
                     best = row
-            reported = np.nan
+            reported = lockbox = true_sharpe = np.nan
             if best is not None:
-                reported = best.lockbox if kinds[name] == "once" else best.answer
-            claimed = reported > cfg.CLAIM_SHARPE  # False while there is none
-            real = best is not None and best.true_sharpe >= threshold
+                lockbox, true_sharpe = best.lockbox, best.true_sharpe
+                reported = lockbox if mechanism.kind == "once" else best.answer
+            claimed = reported > mechanism.claim  # False while there is none
+            lockbox_claimed = lockbox > mechanism.claim
+            real = best is not None and true_sharpe >= threshold
             rows.append(
                 {
                     "world_type": world_type,
@@ -326,10 +382,12 @@ def candidates(table: pd.DataFrame, threshold: float) -> pd.DataFrame:
                     "mechanism": name,
                     "round": row.round,
                     "reported": reported,
-                    "lockbox": best.lockbox if best is not None else np.nan,
-                    "true_sharpe": best.true_sharpe if best is not None else np.nan,
+                    "lockbox": lockbox,
+                    "true_sharpe": true_sharpe,
                     "false_claim": claimed and not real,
                     "true_claim": claimed and real,
+                    "lockbox_false_claim": lockbox_claimed and not real,
+                    "lockbox_true_claim": lockbox_claimed and real,
                     "answered": answered,
                 }
             )
@@ -347,24 +405,91 @@ def summarise_reuse(
         ["world_type", "mechanism", "round"], sort=False
     )
     for (world_type, name, number), part in groups:
-        false, false_low, false_high = mean_ci(part.false_claim.to_numpy())
-        true, true_low, true_high = mean_ci(part.true_claim.to_numpy())
+        row = {
+            "world_type": world_type,
+            "mechanism": name,
+            "round": number,
+            "n_worlds": len(part),
+        }
+        for prefix, column in [
+            ("false", "false_claim"),
+            ("true", "true_claim"),
+            ("lockbox_false", "lockbox_false_claim"),
+            ("lockbox_true", "lockbox_true_claim"),
+        ]:
+            share, low, high = mean_ci(part[column].to_numpy())
+            row |= {
+                f"{prefix}_claims": share,
+                f"{prefix}_low": low,
+                f"{prefix}_high": high,
+            }
         rows.append(
-            {
-                "world_type": world_type,
-                "mechanism": name,
-                "round": number,
-                "n_worlds": len(part),
-                "false_claims": false,
-                "false_low": false_low,
-                "false_high": false_high,
-                "true_claims": true,
-                "true_low": true_low,
-                "true_high": true_high,
+            row
+            | {
                 "reported": part.reported.mean(),
                 "lockbox": part.lockbox.mean(),
                 "true_sharpe": part.true_sharpe.mean(),
                 "answered": part.answered.mean(),
+            }
+        )
+    return pd.DataFrame(rows)
+
+
+def answer_sources(table: pd.DataFrame) -> pd.DataFrame:
+    """Per world type and mechanism: where the answers came from.
+
+    An answer came from the lockbox when it differs from the research Sharpe:
+    "reuse" always answers with the lockbox, "once" never, and Thresholdout
+    answers with the research Sharpe itself unless the gap is flagged, and
+    then with the noisy lockbox Sharpe (an exact tie has probability zero).
+    `budget_round` is the round of the last answer Thresholdout could give
+    from the lockbox, in the runs where the budget ran out; NaN otherwise.
+    """
+    by_name = {m.name: m for m in MECHANISMS}
+    runs = []
+    for (world_type, index, name), run in table.groupby(
+        ["world_type", "world", "mechanism"], sort=False
+    ):
+        run = run.sort_values("round")
+        answered = run.answer.notna()
+        from_lockbox = answered & (run.answer != run.research)
+        budget_round = np.nan
+        mechanism = by_name[name]
+        if mechanism.kind == "thresholdout" and from_lockbox.sum() >= mechanism.budget:
+            budget_round = run["round"][from_lockbox].iloc[mechanism.budget - 1]
+        runs.append(
+            {
+                "world_type": world_type,
+                "mechanism": name,
+                "usable": run.research.notna().sum(),
+                "answered": answered.sum(),
+                "from_lockbox": from_lockbox.sum(),
+                "share_from_lockbox": from_lockbox.sum() / max(answered.sum(), 1),
+                "budget_round": budget_round,
+            }
+        )
+    runs = pd.DataFrame(runs)
+    rows = []
+    for (world_type, name), part in runs.groupby(
+        ["world_type", "mechanism"], sort=False
+    ):
+        share, low, high = mean_ci(part.share_from_lockbox.to_numpy().astype(float))
+        spent = part.budget_round.dropna()
+        rows.append(
+            {
+                "world_type": world_type,
+                "mechanism": name,
+                "n_worlds": len(part),
+                "usable_per_run": part.usable.mean(),
+                "answered_per_run": part.answered.mean(),
+                "from_lockbox_per_run": part.from_lockbox.mean(),
+                "share_from_lockbox": share,
+                "share_low": low,
+                "share_high": high,
+                "runs_budget_spent": len(spent) / len(part),
+                "budget_round_median": spent.median() if len(spent) else np.nan,
+                "budget_round_min": spent.min() if len(spent) else np.nan,
+                "budget_round_max": spent.max() if len(spent) else np.nan,
             }
         )
     return pd.DataFrame(rows)
