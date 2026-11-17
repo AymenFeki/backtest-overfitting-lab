@@ -48,11 +48,10 @@ power columns are not comparable one to one.
 
 ![FDR against power for each filter, by signal strength](results/figures/exp1_grid_fdr_power.png)
 
-- With a grid of 76 strategies and a medium-strength signal, every filter
-  keeps the false discovery rate at 1.6% or below; what separates them is
-  power: Benjamini-Hochberg finds 18.5% of the real strategies, Romano-Wolf
-  9.5%, a single holdout 6.6%, and the deflated Sharpe ratio as published
-  none ([Stage 2 note](results/stage2.md)).
+- With a medium-strength signal, every filter keeps the false discovery rate
+  at 1.6% or below; for the grid they differ in power, from none for the
+  deflated Sharpe ratio as published to 18.5% for Benjamini-Hochberg
+  ([Stage 2 note](results/stage2.md)).
 - No filter protects against a signal that fades: with alpha decay, 35% to
   69% of what the research-sample filters accept is worthless
   ([Stage 3 note](results/stage3.md)).
